@@ -23,7 +23,10 @@
     "test:ui": "vitest --ui",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --ext ts,tsx --fix",
-    "clean": "rimraf dist build out"
+    "clean": "rimraf dist build out",
+    "deploy": "./.workspace/scripts/deploy-to-arweave.sh --prod",
+    "deploy:dev": "./.workspace/scripts/deploy-to-arweave.sh --dev",
+    "deploy:quick": "./.workspace/scripts/quick-deploy.sh"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -41,6 +44,7 @@
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "@vitejs/plugin-react": "^4.1.0",
+    "arkb": "^1.4.15",
     "eslint": "^8.45.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.3",
@@ -48,8 +52,5 @@
     "vite": "^4.4.5",
     "vitest": "^0.34.0",
     "rimraf": "^5.0.0"
-  },
-
+  }
 }
-
-
