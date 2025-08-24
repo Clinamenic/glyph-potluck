@@ -9,9 +9,22 @@ export function ProcessingPanel() {
   const [selectedQuality, setSelectedQuality] = useState<VectorizationQuality>('balanced');
 
   const handleProcessAll = async () => {
-    for (const file of uploadedFiles) {
-      await processGlyph(file.id, { quality: selectedQuality });
+    console.log('🚀 Starting batch processing...', { 
+      fileCount: uploadedFiles.length, 
+      quality: selectedQuality 
+    });
+    
+    for (let i = 0; i < uploadedFiles.length; i++) {
+      const file = uploadedFiles[i];
+      console.log(`📤 Processing file ${i + 1}/${uploadedFiles.length}: ${file.name}`);
+      try {
+        await processGlyph(file.id, { quality: selectedQuality });
+        console.log(`✅ Completed processing: ${file.name}`);
+      } catch (error) {
+        console.error(`❌ Failed to process ${file.name}:`, error);
+      }
     }
+    console.log('🎉 Batch processing completed!');
   };
 
   const qualityOptions = [

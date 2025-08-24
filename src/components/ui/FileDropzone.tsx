@@ -15,8 +15,12 @@ export function FileDropzone({ onFilesUploaded }: FileDropzoneProps) {
     setIsDragOver(false);
 
     const files = Array.from(e.dataTransfer.files);
+    console.log('📂 Files dropped:', { count: files.length, files: files.map(f => f.name) });
+    
     if (files.length > 0) {
       onFilesUploaded(files);
+    } else {
+      console.warn('⚠️ No files dropped');
     }
   }, [onFilesUploaded]);
 
@@ -32,8 +36,12 @@ export function FileDropzone({ onFilesUploaded }: FileDropzoneProps) {
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+    console.log('📁 Files selected via input:', { count: files.length, files: files.map(f => f.name) });
+    
     if (files.length > 0) {
       onFilesUploaded(files);
+    } else {
+      console.warn('⚠️ No files selected');
     }
     // Reset input so same files can be selected again
     e.target.value = '';

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { GlyphStore, UploadedFile, ProcessedGlyph, VectorizationParams } from '@/types';
+import type { GlyphStore, UploadedFile, ProcessedGlyph, VectorizationParams, VectorizationQuality } from '@/types';
 import { APP_CONFIG } from '@/types';
 
 const initialProcessingState = {
@@ -21,6 +21,8 @@ export const useGlyphStore = create<GlyphStore>()(
 
       // Actions
       addFiles: async (files: File[]) => {
+        console.log('📁 Starting file upload process...', { fileCount: files.length });
+        
         set((state) => ({
           processingState: {
             ...state.processingState,
@@ -31,11 +33,24 @@ export const useGlyphStore = create<GlyphStore>()(
         }), false, 'addFiles:start');
 
         try {
-          const validFiles = files.filter(validateFile);
+          console.log('🔍 Validating files...');
+          const validFiles = files.filter((file, index) => {
+            const isValid = validateFile(file);
+            console.log(`File ${index + 1}: ${file.name} - ${isValid ? '✅ Valid' : '❌ Invalid'}`);
+            return isValid;
+          });
+          
+          if (validFiles.length === 0) {
+            throw new Error('No valid files found. Please upload PNG, JPG, or WebP images.');
+          }
+
+          console.log(`✅ ${validFiles.length} valid files found, processing...`);
           const uploadedFiles: UploadedFile[] = [];
 
           for (let i = 0; i < validFiles.length; i++) {
             const file = validFiles[i];
+            console.log(`📤 Processing file ${i + 1}/${validFiles.length}: ${file.name}`);
+            
             const dataUrl = await fileToDataUrl(file);
             
             const uploadedFile: UploadedFile = {
@@ -49,6 +64,7 @@ export const useGlyphStore = create<GlyphStore>()(
             };
 
             uploadedFiles.push(uploadedFile);
+            console.log(`✅ File processed: ${file.name} (${formatFileSize(file.size)})`);
 
             // Update progress
             const progress = ((i + 1) / validFiles.length) * 100;
@@ -61,6 +77,7 @@ export const useGlyphStore = create<GlyphStore>()(
             }), false, 'addFiles:progress');
           }
 
+          console.log(`🎉 Successfully uploaded ${uploadedFiles.length} files`);
           set((state) => ({
             uploadedFiles: [...state.uploadedFiles, ...uploadedFiles],
             processingState: {
@@ -78,7 +95,7 @@ export const useGlyphStore = create<GlyphStore>()(
           }, 2000);
 
         } catch (error) {
-          console.error('Error adding files:', error);
+          console.error('❌ Error adding files:', error);
           set(() => ({
             processingState: {
               status: 'error',
@@ -98,13 +115,17 @@ export const useGlyphStore = create<GlyphStore>()(
       },
 
       processGlyph: async (fileId: string, params: VectorizationParams) => {
+        console.log('🔄 Starting vectorization process...', { fileId, quality: params.quality });
+        
         const { uploadedFiles } = get();
         const file = uploadedFiles.find(f => f.id === fileId);
         
         if (!file) {
-          console.error('File not found for processing:', fileId);
+          console.error('❌ File not found for processing:', fileId);
           return;
         }
+
+        console.log('📝 Processing file:', { name: file.name, size: file.size, type: file.type });
 
         set(() => ({
           processingState: {
@@ -115,9 +136,11 @@ export const useGlyphStore = create<GlyphStore>()(
         }), false, 'processGlyph:start');
 
         try {
-          // Simulate vectorization process for now
-          // This will be replaced with actual vectorization logic
+          // Enhanced vectorization simulation with better mock data
+          console.log(`🎯 Using ${params.quality} quality vectorization`);
+          
           await simulateVectorization(file, params, (progress, message) => {
+            console.log(`⏳ Progress: ${progress}% - ${message}`);
             set((state) => ({
               processingState: {
                 ...state.processingState,
@@ -127,23 +150,25 @@ export const useGlyphStore = create<GlyphStore>()(
             }), false, 'processGlyph:progress');
           });
 
-          // Create processed glyph (mock data for now)
+          // Create more realistic mock SVG data based on quality
+          const svgPath = generateMockSVGPath(params.quality);
           const processedGlyph: ProcessedGlyph = {
             id: generateId(),
             originalFile: file,
-            svgPaths: [`M 100 100 L 200 200 L 150 250 Z`], // Mock SVG path
+            svgPaths: [svgPath],
             vectorData: {
-              paths: [
-                { command: 'M', values: [100, 100] },
-                { command: 'L', values: [200, 200] },
-                { command: 'L', values: [150, 250] },
-                { command: 'Z', values: [] },
-              ],
-              bounds: { x: 100, y: 100, width: 100, height: 150 },
+              paths: parseSVGPath(svgPath),
+              bounds: { x: 50, y: 50, width: 200, height: 250 },
             },
             processingParams: params,
             processed: new Date(),
           };
+
+          console.log('✅ Vectorization completed successfully:', {
+            glyphId: processedGlyph.id,
+            svgPathLength: svgPath.length,
+            quality: params.quality
+          });
 
           set((state) => ({
             processedGlyphs: [...state.processedGlyphs, processedGlyph],
@@ -162,7 +187,7 @@ export const useGlyphStore = create<GlyphStore>()(
           }, 2000);
 
         } catch (error) {
-          console.error('Error processing glyph:', error);
+          console.error('❌ Error processing glyph:', error);
           set(() => ({
             processingState: {
               status: 'error',
@@ -225,6 +250,42 @@ function fileToDataUrl(file: File): Promise<string> {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function generateMockSVGPath(quality: VectorizationQuality): string {
+  // Generate different complexity paths based on quality
+  switch (quality) {
+    case 'fast':
+      // Simple rectangular path
+      return 'M 60 60 L 180 60 L 180 180 L 60 180 Z';
+    case 'balanced':
+      // Letter-like path with curves
+      return 'M 80 50 Q 120 30 160 50 L 160 200 Q 120 220 80 200 L 80 120 L 140 120 L 140 100 L 80 100 Z';
+    case 'high':
+      // Complex path with multiple curves
+      return 'M 75 45 Q 95 25 125 35 Q 155 25 175 45 Q 185 75 175 105 L 175 180 Q 165 210 135 205 Q 105 210 95 180 L 95 105 Q 85 75 75 45 M 110 70 Q 130 60 150 70 L 150 85 Q 130 95 110 85 Z';
+    default:
+      return 'M 100 100 L 150 100 L 150 150 L 100 150 Z';
+  }
+}
+
+function parseSVGPath(pathString: string): any[] {
+  // Simple SVG path parser for mock data
+  const commands = pathString.split(/(?=[MLHVCSQTAZ])/i);
+  return commands.map(cmd => {
+    const parts = cmd.trim().split(/\s+/);
+    const command = parts[0];
+    const values = parts.slice(1).map(Number);
+    return { command, values };
+  });
 }
 
 async function simulateVectorization(
