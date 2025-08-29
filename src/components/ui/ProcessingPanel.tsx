@@ -6,7 +6,7 @@ export function ProcessingPanel() {
   const { processGlyph } = useGlyphStore();
   const uploadedFiles = useUploadedFiles();
   const processingState = useProcessingState();
-  const [selectedQuality, setSelectedQuality] = useState<VectorizationQuality>('balanced');
+  const [selectedQuality, setSelectedQuality] = useState<VectorizationQuality>('high');
 
   const handleProcessAll = async () => {
     console.log('🚀 Starting batch processing...', { 
@@ -29,21 +29,9 @@ export function ProcessingPanel() {
 
   const qualityOptions = [
     {
-      value: 'fast' as const,
-      label: 'Fast',
-      description: 'Quick processing, good for simple shapes',
-      time: '~1-3 seconds'
-    },
-    {
-      value: 'balanced' as const,
-      label: 'Balanced',
-      description: 'Good quality with reasonable speed',
-      time: '~3-8 seconds'
-    },
-    {
       value: 'high' as const,
       label: 'High Quality',
-      description: 'Best results for detailed drawings',
+      description: 'Professional vectorization with smooth curves',
       time: '~5-15 seconds'
     }
   ];

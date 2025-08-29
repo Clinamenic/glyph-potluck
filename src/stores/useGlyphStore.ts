@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { GlyphStore, UploadedFile, ProcessedGlyph, VectorizationParams, VectorizationQuality } from '@/types';
+import type { GlyphStore, UploadedFile, ProcessedGlyph, VectorizationParams } from '@/types';
 import { APP_CONFIG } from '@/types';
+import { fileToCanvas, preprocessImage, resizeIfNeeded } from '@/utils/imagePreprocessing';
+import { vectorizeWithTraceTargetPerfect, parseSVGPath, calculateBounds } from '@/utils/imagetracerVectorization';
 
 const initialProcessingState = {
   status: 'idle' as const,
@@ -17,7 +19,7 @@ export const useGlyphStore = create<GlyphStore>()(
       uploadedFiles: [],
       processedGlyphs: [],
       processingState: initialProcessingState,
-      selectedQuality: 'balanced',
+      selectedQuality: 'high',
 
       // Actions
       addFiles: async (files: File[]) => {
@@ -136,38 +138,100 @@ export const useGlyphStore = create<GlyphStore>()(
         }), false, 'processGlyph:start');
 
         try {
-          // Enhanced vectorization simulation with better mock data
+          // TRACE TARGET PERFECT single method vectorization
           console.log(`🎯 Using ${params.quality} quality vectorization`);
           
-          await simulateVectorization(file, params, (progress, message) => {
-            console.log(`⏳ Progress: ${progress}% - ${message}`);
-            set((state) => ({
-              processingState: {
-                ...state.processingState,
-                progress,
-                message,
-              },
-            }), false, 'processGlyph:progress');
+          // Step 1: Convert file to canvas
+          set((state) => ({
+            processingState: {
+              ...state.processingState,
+              progress: 10,
+              message: 'Converting image to canvas...',
+            },
+          }), false, 'processGlyph:canvas');
+          
+          const canvas = await fileToCanvas(file.file);
+          
+          // Step 2: Resize if needed
+          set((state) => ({
+            processingState: {
+              ...state.processingState,
+              progress: 20,
+              message: 'Optimizing image size...',
+            },
+          }), false, 'processGlyph:resize');
+          
+          const resizedCanvas = resizeIfNeeded(canvas, 1024);
+          
+          // Step 3: Preprocess image
+          set((state) => ({
+            processingState: {
+              ...state.processingState,
+              progress: 30,
+              message: 'Preprocessing image...',
+            },
+          }), false, 'processGlyph:preprocess');
+          
+          const preprocessedCanvas = preprocessImage(resizedCanvas, { 
+            quality: params.quality,
+            noiseReduction: params.quality === 'high'
           });
+          
+          // Step 4: Run Trace Target Perfect vectorization
+          set((state) => ({
+            processingState: {
+              ...state.processingState,
+              progress: 40,
+              message: 'Starting vectorization...',
+            },
+          }), false, 'processGlyph:vectorize');
+          
+          const vectorizationResult = await vectorizeWithTraceTargetPerfect(
+            preprocessedCanvas,
+            params,
+            (progress, message) => {
+              console.log(`⏳ Vectorization Progress: ${progress}% - ${message}`);
+              set((state) => ({
+                processingState: {
+                  ...state.processingState,
+                  progress: 40 + (progress * 0.5), // Map 0-100 to 40-90
+                  message,
+                },
+              }), false, 'processGlyph:vectorize');
+            }
+          );
 
-          // Create more realistic mock SVG data based on quality
-          const svgPath = generateMockSVGPath(params.quality);
+          // Step 5: Process vectorization result
+          set((state) => ({
+            processingState: {
+              ...state.processingState,
+              progress: 95,
+              message: 'Processing vectorization result...',
+            },
+          }), false, 'processGlyph:results');
+
+          // Create single glyph with Trace Target Perfect result
+          const pathCommands = parseSVGPath(vectorizationResult);
+          const bounds = calculateBounds(vectorizationResult);
+          
           const processedGlyph: ProcessedGlyph = {
             id: generateId(),
             originalFile: file,
-            svgPaths: [svgPath],
+            svgPaths: [vectorizationResult],
             vectorData: {
-              paths: parseSVGPath(svgPath),
-              bounds: { x: 50, y: 50, width: 200, height: 250 },
+              paths: pathCommands,
+              bounds,
             },
             processingParams: params,
             processed: new Date(),
+
+            methodId: "trace-target-perfect",
           };
 
           console.log('✅ Vectorization completed successfully:', {
-            glyphId: processedGlyph.id,
-            svgPathLength: svgPath.length,
-            quality: params.quality
+            file: file.name,
+            quality: params.quality,
+            pathLength: vectorizationResult.length
           });
 
           set((state) => ({
@@ -207,12 +271,146 @@ export const useGlyphStore = create<GlyphStore>()(
         }), false, 'updateGlyphCharacter');
       },
 
+      // Path editing actions
+      updateGlyphPath: (glyphId: string, newPath: string) => {
+        console.log(`🖊️ Updating path for glyph ${glyphId}`);
+        set((state) => ({
+          processedGlyphs: state.processedGlyphs.map(glyph => {
+            if (glyph.id === glyphId) {
+              // Parse the new path and update vector data
+              const pathCommands = parseSVGPath(newPath);
+              const bounds = calculateBounds(newPath);
+              
+              return {
+                ...glyph,
+                svgPaths: [newPath],
+                vectorData: {
+                  paths: pathCommands,
+                  bounds,
+                },
+              };
+            }
+            return glyph;
+          }),
+        }), false, 'updateGlyphPath');
+      },
+
+      setEditablePathData: (glyphId: string, pathData: import('@/types').EditablePathData) => {
+        console.log(`📝 Setting editable path data for glyph ${glyphId}`);
+        set((state) => ({
+          processedGlyphs: state.processedGlyphs.map(glyph => {
+            if (glyph.id === glyphId) {
+              return {
+                ...glyph,
+                editablePathData: pathData,
+              };
+            }
+            return glyph;
+          }),
+        }), false, 'setEditablePathData');
+      },
+
+      addPathEditToHistory: (glyphId: string, pathData: import('@/types').EditablePathData) => {
+        console.log(`📚 Adding path edit to history for glyph ${glyphId}`);
+        set((state) => ({
+          processedGlyphs: state.processedGlyphs.map(glyph => {
+            if (glyph.id === glyphId) {
+              const currentHistory = glyph.editHistory || [];
+              const currentIndex = glyph.currentEditIndex || -1;
+              
+              // Remove any history after current index (if user made changes after undoing)
+              const newHistory = currentHistory.slice(0, currentIndex + 1);
+              newHistory.push(pathData);
+              
+              // Limit history size to 50 operations
+              const limitedHistory = newHistory.slice(-50);
+              
+              return {
+                ...glyph,
+                editHistory: limitedHistory,
+                currentEditIndex: limitedHistory.length - 1,
+                editablePathData: pathData,
+              };
+            }
+            return glyph;
+          }),
+        }), false, 'addPathEditToHistory');
+      },
+
+      undoPathEdit: (glyphId: string) => {
+        console.log(`↶ Undoing path edit for glyph ${glyphId}`);
+        set((state) => ({
+          processedGlyphs: state.processedGlyphs.map(glyph => {
+            if (glyph.id === glyphId && glyph.editHistory && glyph.currentEditIndex !== undefined) {
+              const newIndex = Math.max(0, glyph.currentEditIndex - 1);
+              const pathData = glyph.editHistory[newIndex];
+              
+              if (pathData) {
+                return {
+                  ...glyph,
+                  currentEditIndex: newIndex,
+                  editablePathData: pathData,
+                };
+              }
+            }
+            return glyph;
+          }),
+        }), false, 'undoPathEdit');
+      },
+
+      redoPathEdit: (glyphId: string) => {
+        console.log(`↷ Redoing path edit for glyph ${glyphId}`);
+        set((state) => ({
+          processedGlyphs: state.processedGlyphs.map(glyph => {
+            if (glyph.id === glyphId && glyph.editHistory && glyph.currentEditIndex !== undefined) {
+              const newIndex = Math.min(glyph.editHistory.length - 1, glyph.currentEditIndex + 1);
+              const pathData = glyph.editHistory[newIndex];
+              
+              if (pathData && newIndex !== glyph.currentEditIndex) {
+                return {
+                  ...glyph,
+                  currentEditIndex: newIndex,
+                  editablePathData: pathData,
+                };
+              }
+            }
+            return glyph;
+          }),
+        }), false, 'redoPathEdit');
+      },
+
+      resetGlyphToOriginal: (glyphId: string) => {
+        console.log(`🔄 Resetting glyph ${glyphId} to original path`);
+        set((state) => ({
+          processedGlyphs: state.processedGlyphs.map(glyph => {
+            if (glyph.id === glyphId && glyph.editablePathData) {
+              const originalPath = glyph.editablePathData.originalPath;
+              const pathCommands = parseSVGPath(originalPath);
+              const bounds = calculateBounds(originalPath);
+              
+              return {
+                ...glyph,
+                svgPaths: [originalPath],
+                vectorData: {
+                  paths: pathCommands,
+                  bounds,
+                },
+                editablePathData: undefined,
+                editHistory: [],
+                currentEditIndex: undefined,
+              };
+            }
+            return glyph;
+          }),
+        }), false, 'resetGlyphToOriginal');
+      },
+
       clearAll: () => {
         set({
           uploadedFiles: [],
           processedGlyphs: [],
           processingState: initialProcessingState,
-          selectedQuality: 'balanced',
+          selectedQuality: 'high',
         }, false, 'clearAll');
       },
     }),
@@ -260,54 +458,7 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function generateMockSVGPath(quality: VectorizationQuality): string {
-  // Generate different complexity paths based on quality
-  switch (quality) {
-    case 'fast':
-      // Simple rectangular path
-      return 'M 60 60 L 180 60 L 180 180 L 60 180 Z';
-    case 'balanced':
-      // Letter-like path with curves
-      return 'M 80 50 Q 120 30 160 50 L 160 200 Q 120 220 80 200 L 80 120 L 140 120 L 140 100 L 80 100 Z';
-    case 'high':
-      // Complex path with multiple curves
-      return 'M 75 45 Q 95 25 125 35 Q 155 25 175 45 Q 185 75 175 105 L 175 180 Q 165 210 135 205 Q 105 210 95 180 L 95 105 Q 85 75 75 45 M 110 70 Q 130 60 150 70 L 150 85 Q 130 95 110 85 Z';
-    default:
-      return 'M 100 100 L 150 100 L 150 150 L 100 150 Z';
-  }
-}
-
-function parseSVGPath(pathString: string): any[] {
-  // Simple SVG path parser for mock data
-  const commands = pathString.split(/(?=[MLHVCSQTAZ])/i);
-  return commands.map(cmd => {
-    const parts = cmd.trim().split(/\s+/);
-    const command = parts[0];
-    const values = parts.slice(1).map(Number);
-    return { command, values };
-  });
-}
-
-async function simulateVectorization(
-  _file: UploadedFile,
-  _params: VectorizationParams,
-  onProgress: (progress: number, message: string) => void
-): Promise<void> {
-  const steps = [
-    'Loading image...',
-    'Preprocessing image...',
-    'Detecting edges...',
-    'Tracing paths...',
-    'Optimizing vectors...',
-    'Finalizing...',
-  ];
-
-  for (let i = 0; i < steps.length; i++) {
-    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
-    const progress = ((i + 1) / steps.length) * 100;
-    onProgress(progress, steps[i]);
-  }
-}
+// Mock functions removed - now using real ImageTracer vectorization
 
 // Selector hooks
 export const useUploadedFiles = () => useGlyphStore((state) => state.uploadedFiles);

@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { useProcessedGlyphs } from '@/stores/useGlyphStore';
+import { useProcessedGlyphs, useGlyphStore } from '@/stores/useGlyphStore';
+import { InteractiveSVGEditor } from './InteractiveSVGEditor';
 
 export function FontPreview() {
   const processedGlyphs = useProcessedGlyphs();
-  const [previewText, setPreviewText] = useState('HELLO WORLD');
-  const [fontSize, setFontSize] = useState(48);
+  const [editingMode, setEditingMode] = useState(false);
+  const [selectedGlyphId, setSelectedGlyphId] = useState<string | null>(null);
+  
+  const store = useGlyphStore();
 
   if (processedGlyphs.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="text-6xl mb-4">🔤</div>
+        <div className="text-6xl mb-4">Aa</div>
         <h3 className="text-lg font-medium text-gray-600 mb-2">
           No glyphs processed yet
         </h3>
@@ -22,71 +25,109 @@ export function FontPreview() {
 
   return (
     <div className="space-y-6">
-      {/* Preview controls */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            Preview Text
-          </label>
-          <input
-            type="text"
-            value={previewText}
-            onChange={(e) => setPreviewText(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Type text to preview..."
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            Font Size: {fontSize}px
-          </label>
-          <input
-            type="range"
-            min="12"
-            max="120"
-            value={fontSize}
-            onChange={(e) => setFontSize(Number(e.target.value))}
-            className="w-full"
-          />
-        </div>
-      </div>
-
-      {/* Font preview area */}
-      <div className="bg-white border rounded-lg p-6 min-h-[200px] flex items-center justify-center">
-        <div 
-          className="text-center break-all"
-          style={{ 
-            fontSize: `${fontSize}px`,
-            lineHeight: 1.2,
-            fontFamily: 'monospace', // Will be replaced with generated font
-            color: '#333'
-          }}
-        >
-          {previewText || 'Type something above...'}
-        </div>
-      </div>
-
-      {/* Processed glyphs */}
+      {/* Processed glyphs with editing controls */}
       <div>
-        <h3 className="font-semibold mb-4">
-          Processed Glyphs ({processedGlyphs.length})
-        </h3>
-        <div className="grid grid-cols-6 gap-3">
-          {processedGlyphs.map((glyph) => (
-            <div
-              key={glyph.id}
-              className="aspect-square bg-white border rounded-lg p-2 flex items-center justify-center"
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">
+            Processed Glyphs ({processedGlyphs.length})
+          </h3>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setEditingMode(!editingMode)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                editingMode
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
             >
-              <svg
-                viewBox="0 0 200 200"
-                className="w-full h-full"
-                fill="currentColor"
-              >
-                {glyph.svgPaths.map((path, index) => (
-                  <path key={index} d={path} />
-                ))}
-              </svg>
+              {editingMode ? "Preview Mode" : "Edit Mode"}
+            </button>
+            
+            {editingMode && selectedGlyphId && (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => store.undoPathEdit(selectedGlyphId)}
+                  className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+                  title="Undo"
+                >
+                  Undo
+                </button>
+                <button
+                  onClick={() => store.redoPathEdit(selectedGlyphId)}
+                  className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+                  title="Redo"
+                >
+                  Redo
+                </button>
+                <button
+                  onClick={() => store.resetGlyphToOriginal(selectedGlyphId)}
+                  className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm"
+                  title="Reset to original"
+                >
+                  Reset
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {processedGlyphs.map((glyph) => (
+            <div 
+              key={glyph.id} 
+              className={`space-y-2 ${editingMode && selectedGlyphId === glyph.id ? 'ring-2 ring-blue-500 rounded-lg' : ''}`}
+            >
+              {/* Selection control for editing mode */}
+              {editingMode && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setSelectedGlyphId(glyph.id === selectedGlyphId ? null : glyph.id)}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      selectedGlyphId === glyph.id
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    }`}
+                  >
+                    {selectedGlyphId === glyph.id ? "Editing" : "Select"}
+                  </button>
+                </div>
+              )}
+              
+              <div className="aspect-square bg-white border rounded-lg overflow-hidden">
+                {editingMode && selectedGlyphId === glyph.id ? (
+                  <InteractiveSVGEditor
+                    glyphId={glyph.id}
+                    initialPath={glyph.svgPaths[0] || ""}
+                    onPathChanged={(newPath) => {
+                      store.updateGlyphPath(glyph.id, newPath);
+                    }}
+                    viewBox={{ width: 200, height: 200 }}
+                    className="w-full h-full"
+                  />
+                ) : (
+                  <div className="p-2 flex items-center justify-center h-full">
+                    <svg
+                      viewBox="0 0 200 200"
+                      className="w-full h-full"
+                      fill="currentColor"
+                    >
+                      {glyph.svgPaths.map((path, index) => (
+                        <path key={index} d={path} />
+                      ))}
+                    </svg>
+                  </div>
+                )}
+              </div>
+              
+              {/* File info */}
+              <div className="text-xs text-gray-500 text-center">
+                {glyph.originalFile.name}
+                {editingMode && selectedGlyphId === glyph.id && (
+                  <div className="text-blue-600 font-medium mt-1">
+                    Click and drag nodes to edit
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -119,8 +160,8 @@ export function FontPreview() {
                 maxLength={1}
                 value={glyph.character || ''}
                 onChange={(e) => {
-                  // This would update the character mapping
-                  console.log('Character mapping:', glyph.id, e.target.value);
+                  const { updateGlyphCharacter } = useGlyphStore.getState();
+                  updateGlyphCharacter(glyph.id, e.target.value);
                 }}
                 className="w-12 px-2 py-1 text-center border border-gray-300 rounded"
               />
@@ -145,7 +186,7 @@ export function FontPreview() {
             </div>
             
             <button className="btn btn-success btn-lg w-full">
-              📥 Generate & Download Font
+              Generate & Download Font
             </button>
           </div>
         </div>

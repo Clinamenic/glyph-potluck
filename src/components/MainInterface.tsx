@@ -1,13 +1,30 @@
 // Main application interface
+import { useEffect } from 'react';
 import { FileDropzone } from '@/components/ui/FileDropzone';
 import { FileList } from '@/components/ui/FileList';
 import { ProcessingPanel } from '@/components/ui/ProcessingPanel';
 import { FontPreview } from '@/components/ui/FontPreview';
+import { VectorizationDebugger } from '@/components/ui/VectorizationDebugger';
 import { useGlyphStore, useUploadedFiles } from '@/stores/useGlyphStore';
+import { validateImageTracer } from '@/utils/imagetracerVectorization';
 
 export function MainInterface() {
   const { addFiles, removeFile } = useGlyphStore();
   const uploadedFiles = useUploadedFiles();
+
+  // Test ImageTracer on startup
+  useEffect(() => {
+    const testImageTracer = async () => {
+      try {
+        const isValid = await validateImageTracer();
+        console.log('🧪 ImageTracer validation result:', isValid ? 'PASSED' : 'FAILED');
+      } catch (error) {
+        console.error('🧪 ImageTracer validation error:', error);
+      }
+    };
+    
+    testImageTracer();
+  }, []);
 
   const handleFilesUploaded = async (files: File[]) => {
     await addFiles(files);
@@ -22,7 +39,7 @@ export function MainInterface() {
       {/* Header */}
       <header className="text-center py-8 mb-8">
         <h1 className="text-5xl font-bold text-white mb-4">
-          ✨ Glyph Potluck
+          Glyph Potluck
         </h1>
         <p className="text-xl text-white/90 max-w-2xl mx-auto">
           Turn your hand-drawn letters into beautiful fonts. Upload images, 
@@ -68,7 +85,7 @@ export function MainInterface() {
             {/* Quick tips */}
             <div className="card-glass">
               <h3 className="text-lg font-semibold text-white mb-4">
-                💡 Quick Tips
+                Quick Tips
               </h3>
               <ul className="space-y-2 text-white/90 text-sm">
                 <li>• Use dark ink on white paper for best results</li>
@@ -77,6 +94,9 @@ export function MainInterface() {
                 <li>• High contrast = better vectorization</li>
               </ul>
             </div>
+
+            {/* Vectorization debugger */}
+            <VectorizationDebugger />
           </div>
         </div>
       </div>

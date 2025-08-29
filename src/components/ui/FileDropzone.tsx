@@ -80,7 +80,7 @@ export function FileDropzone({ onFilesUploaded }: FileDropzoneProps) {
         >
           <div className="space-y-4">
             <div className="text-6xl">
-              {isProcessing ? '⏳' : '📁'}
+              {isProcessing ? 'Processing...' : 'Files'}
             </div>
             
             <div>

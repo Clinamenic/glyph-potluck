@@ -39,12 +39,44 @@ export interface ProcessedGlyph {
   processingParams: VectorizationParams;
   character?: string; // Unicode character assignment
   processed: Date;
+
+  methodId?: string;    // Unique identifier for vectorization method
+  editablePathData?: EditablePathData; // Interactive editing data
+  editHistory?: EditablePathData[]; // Undo/redo history
+  currentEditIndex?: number; // Current position in edit history
 }
 
 // SVG and vector types
 export interface SVGPathCommand {
   command: string;
   values: number[];
+}
+
+// SVG Path editing types for interactive editing
+export interface SVGPathNode {
+  id: string;
+  type: "move" | "line" | "curve" | "close";
+  x: number;
+  y: number;
+  controlPoint1?: { x: number; y: number };
+  controlPoint2?: { x: number; y: number };
+}
+
+export interface EditablePathData {
+  nodes: SVGPathNode[];
+  viewBox: { width: number; height: number; x: number; y: number };
+  originalPath: string;
+}
+
+export interface PathEditingState {
+  selectedNodeId: string | null;
+  dragState: {
+    isDragging: boolean;
+    startPosition: { x: number; y: number };
+    nodeId: string | null;
+  };
+  hoveredNodeId: string | null;
+  editMode: "select" | "add" | "delete";
 }
 
 export interface GlyphMetrics {
@@ -131,6 +163,14 @@ export interface GlyphStore {
   processGlyph: (fileId: string, params: VectorizationParams) => Promise<void>;
   updateGlyphCharacter: (glyphId: string, character: string) => void;
   clearAll: () => void;
+
+  // New editing actions
+  updateGlyphPath: (glyphId: string, newPath: string) => void;
+  setEditablePathData: (glyphId: string, pathData: EditablePathData) => void;
+  addPathEditToHistory: (glyphId: string, pathData: EditablePathData) => void;
+  undoPathEdit: (glyphId: string) => void;
+  redoPathEdit: (glyphId: string) => void;
+  resetGlyphToOriginal: (glyphId: string) => void;
 }
 
 export interface FontStore {
