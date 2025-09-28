@@ -76,7 +76,11 @@ export interface PathEditingState {
     nodeId: string | null;
   };
   hoveredNodeId: string | null;
-  editMode: "select" | "add" | "delete";
+  editMode: "select" | "add" | "delete" | "move-path";
+  // Path-level selection for positioning
+  selectedPathId?: string | null;
+  isPathDragging?: boolean;
+  isPathHovered?: boolean;
 }
 
 export interface GlyphMetrics {
@@ -85,6 +89,14 @@ export interface GlyphMetrics {
   advanceWidth: number;
   ascender?: number;
   descender?: number;
+}
+
+export interface PositioningState {
+  showMetricGuides: boolean;
+  snapToMetrics: boolean;
+  metricSnapThreshold: number;
+  pathOffset: { x: number; y: number };
+  selectedMetricLine?: 'baseline' | 'x-height' | 'cap-height' | 'ascender' | 'descender';
 }
 
 // Font generation types
@@ -96,6 +108,11 @@ export interface FontMetadata {
   description?: string;
   author?: string;
   license?: string;
+  // Advanced font metrics
+  ascender?: number;
+  descender?: number;
+  xHeight?: number;
+  capHeight?: number;
 }
 
 export interface FontSettings {

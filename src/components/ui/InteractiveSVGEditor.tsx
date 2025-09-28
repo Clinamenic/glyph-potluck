@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { SVGPathNode, EditablePathData, PathEditingState } from '@/types';
+import type { SVGPathNode, EditablePathData, PathEditingState, PositioningState } from '@/types';
 import { SVGPathEditor, findClosestNode } from '@/utils/svgPathEditor';
 
 export interface InteractiveSVGEditorProps {
@@ -9,6 +9,13 @@ export interface InteractiveSVGEditorProps {
   viewBox?: { width: number; height: number };
   readOnly?: boolean;
   className?: string;
+  fontMetrics?: {
+    unitsPerEm: number;
+    ascender: number;
+    descender: number;
+    xHeight: number;
+    capHeight: number;
+  };
 }
 
 export function InteractiveSVGEditor({
@@ -18,6 +25,7 @@ export function InteractiveSVGEditor({
   viewBox = { width: 200, height: 200 },
   readOnly = false,
   className = "",
+  fontMetrics,
 }: InteractiveSVGEditorProps) {
   // State management
   const [editableData, setEditableData] = useState<EditablePathData>(() =>
@@ -44,6 +52,15 @@ export function InteractiveSVGEditor({
     maxScale: 10,
   });
 
+  // Glyph positioning state
+  const [positioningState, setPositioningState] = useState<PositioningState>({
+    showMetricGuides: true,
+    snapToMetrics: true,
+    metricSnapThreshold: 5,
+    pathOffset: { x: 0, y: 0 },
+    selectedMetricLine: undefined,
+  });
+
   // Refs
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,6 +73,30 @@ export function InteractiveSVGEditor({
     const newEditableData = SVGPathEditor.createEditablePathData(initialPath, viewBox);
     setEditableData(newEditableData);
   }, [initialPath, viewBox]);
+
+  // Smart snapping to metric lines
+  const snapToMetrics = useCallback((y: number): number => {
+    if (!fontMetrics || !positioningState.snapToMetrics) return y;
+    
+    const threshold = positioningState.metricSnapThreshold;
+    const metrics = [
+      0, // baseline
+      fontMetrics.xHeight,
+      fontMetrics.capHeight,
+      fontMetrics.ascender,
+      fontMetrics.descender
+    ];
+    
+    for (const metric of metrics) {
+      const metricY = fontMetrics.unitsPerEm - metric;
+      if (Math.abs(y - metricY) < threshold) {
+        console.log(`🎯 Snapped to metric: ${metric} at Y=${metricY}`);
+        return metricY;
+      }
+    }
+    
+    return y;
+  }, [fontMetrics, positioningState.snapToMetrics, positioningState.metricSnapThreshold]);
 
   // Generate current path string and notify parent of changes
   const currentPath = SVGPathEditor.nodesToPathString(editableData.nodes);
@@ -151,18 +192,27 @@ export function InteractiveSVGEditor({
     
     const svgCoords = screenToSVG(event.clientX, event.clientY);
     
+    // Apply snapping in move-path mode if path is selected
+    let finalCoords = svgCoords;
+    if (editingState.editMode === "move-path" && editingState.selectedPathId) {
+      finalCoords = {
+        x: svgCoords.x,
+        y: snapToMetrics(svgCoords.y)
+      };
+    }
+    
     // Update node position
     const newNodes = SVGPathEditor.moveNode(
       editableData.nodes,
       editingState.dragState.nodeId,
-      svgCoords
+      finalCoords
     );
     
     setEditableData(prev => ({
       ...prev,
       nodes: newNodes,
     }));
-  }, [readOnly, editableData.nodes, editingState.dragState.nodeId, screenToSVG]);
+  }, [readOnly, editableData.nodes, editingState.dragState.nodeId, screenToSVG, editingState.editMode, snapToMetrics]);
 
   // Handle mouse up to end dragging
   const handleMouseUp = useCallback(() => {
@@ -180,6 +230,34 @@ export function InteractiveSVGEditor({
     }
   }, []);
 
+  // Force stop all dragging (emergency stop)
+  const forceStopDragging = useCallback(() => {
+    console.log('🛑 Force stopping all dragging');
+    isDraggingRef.current = false;
+    setEditingState(prev => ({
+      ...prev,
+      dragState: {
+        isDragging: false,
+        startPosition: { x: 0, y: 0 },
+        nodeId: null,
+      },
+      selectedPathId: null,
+      isPathHovered: false,
+    }));
+  }, []);
+
+  // Add keyboard event handler for emergency stop
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        forceStopDragging();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [forceStopDragging]);
+
   // Handle node hover
   const handleNodeMouseEnter = useCallback((nodeId: string) => {
     if (!readOnly) {
@@ -193,28 +271,47 @@ export function InteractiveSVGEditor({
     }
   }, [readOnly]);
 
-  // Handle path click to add new nodes
+  // Handle path click for different edit modes
   const handlePathClick = useCallback((event: React.MouseEvent) => {
-    if (readOnly || editingState.editMode !== "add") return;
+    if (readOnly) return;
     
     const svgCoords = screenToSVG(event.clientX, event.clientY);
     
-    // Find closest node to insert after
-    const closestNode = findClosestNode(editableData.nodes, svgCoords, 50);
-    if (!closestNode) return;
-    
-    const newNodes = SVGPathEditor.addNode(
-      editableData.nodes,
-      svgCoords,
-      closestNode.id
-    );
-    
-    setEditableData(prev => ({
-      ...prev,
-      nodes: newNodes,
-    }));
-    
-    console.log(`➕ Added new node at (${svgCoords.x.toFixed(1)}, ${svgCoords.y.toFixed(1)})`);
+    if (editingState.editMode === "add") {
+      // Add new node logic
+      const closestNode = findClosestNode(editableData.nodes, svgCoords, 50);
+      if (!closestNode) return;
+      
+      const newNodes = SVGPathEditor.addNode(
+        editableData.nodes,
+        svgCoords,
+        closestNode.id
+      );
+      
+      setEditableData(prev => ({
+        ...prev,
+        nodes: newNodes,
+      }));
+      
+      console.log(`➕ Added new node at (${svgCoords.x.toFixed(1)}, ${svgCoords.y.toFixed(1)})`);
+    } else if (editingState.editMode === "move-path") {
+      // Toggle path selection
+      if (editingState.selectedPathId) {
+        setEditingState(prev => ({ 
+          ...prev, 
+          selectedPathId: null,
+          isPathHovered: false
+        }));
+        console.log('🎯 Path deselected');
+      } else {
+        setEditingState(prev => ({ 
+          ...prev, 
+          selectedPathId: "main-path",
+          selectedNodeId: null // Clear node selection when selecting path
+        }));
+        console.log('🎯 Path selected for movement');
+      }
+    }
   }, [readOnly, editingState.editMode, editableData.nodes, screenToSVG]);
 
   // Handle node right-click for context menu
@@ -289,6 +386,44 @@ export function InteractiveSVGEditor({
     isPanningRef.current = false;
   }, []);
 
+  // Handle path dragging for positioning
+  const handlePathDrag = useCallback((event: React.MouseEvent) => {
+    if (!editingState.selectedPathId || !isDraggingRef.current) return;
+    
+    const deltaX = event.movementX / zoomState.scale;
+    const deltaY = event.movementY / zoomState.scale;
+    
+    // Only move if there's actual movement
+    if (Math.abs(deltaX) < 0.1 && Math.abs(deltaY) < 0.1) return;
+    
+    const newOffset = {
+      x: positioningState.pathOffset.x + deltaX,
+      y: positioningState.pathOffset.y + deltaY
+    };
+    
+    // Apply offset to all nodes
+    const repositionedNodes = editableData.nodes.map(node => ({
+      ...node,
+      x: node.x + deltaX,
+      y: node.y + deltaY
+    }));
+    
+    setEditableData(prev => ({ ...prev, nodes: repositionedNodes }));
+    setPositioningState(prev => ({ ...prev, pathOffset: newOffset }));
+    
+    console.log(`🔄 Path moved by (${deltaX.toFixed(1)}, ${deltaY.toFixed(1)})`);
+  }, [editingState.selectedPathId, positioningState.pathOffset, editableData.nodes, zoomState.scale]);
+
+  // Handle path mouse down for dragging
+  const handlePathMouseDown = useCallback((event: React.MouseEvent) => {
+    if (readOnly || editingState.editMode !== "move-path" || !editingState.selectedPathId) return;
+    
+    if (event.button === 0) { // Left mouse button
+      isDraggingRef.current = true;
+      console.log('🖱️ Started dragging path');
+    }
+  }, [readOnly, editingState.editMode, editingState.selectedPathId]);
+
   // Zoom controls
   const zoomIn = useCallback(() => {
     setZoomState(prev => ({
@@ -348,6 +483,70 @@ export function InteractiveSVGEditor({
       translateY: newTranslateY,
     }));
   }, [editableData.nodes, viewBox, zoomState.maxScale]);
+
+  // Render font metric guides
+  const renderMetricGuides = () => {
+    if (!fontMetrics || !positioningState.showMetricGuides) return null;
+    
+    return (
+      <g className="metric-guides" style={{ pointerEvents: "none" }}>
+        {/* Baseline */}
+        <line
+          x1="0" y1={fontMetrics.unitsPerEm - 0}
+          x2="100%" y2={fontMetrics.unitsPerEm - 0}
+          stroke="#28a745" strokeWidth={1 / zoomState.scale} strokeDasharray="5,5"
+        />
+        
+        {/* X-Height */}
+        <line
+          x1="0" y1={fontMetrics.unitsPerEm - fontMetrics.xHeight}
+          x2="100%" y2={fontMetrics.unitsPerEm - fontMetrics.xHeight}
+          stroke="#17a2b8" strokeWidth={1 / zoomState.scale} strokeDasharray="3,3"
+        />
+        
+        {/* Cap Height */}
+        <line
+          x1="0" y1={fontMetrics.unitsPerEm - fontMetrics.capHeight}
+          x2="100%" y2={fontMetrics.unitsPerEm - fontMetrics.capHeight}
+          stroke="#6f42c1" strokeWidth={1 / zoomState.scale} strokeDasharray="3,3"
+        />
+        
+        {/* Ascender */}
+        <line
+          x1="0" y1={fontMetrics.unitsPerEm - fontMetrics.ascender}
+          x2="100%" y2={fontMetrics.unitsPerEm - fontMetrics.ascender}
+          stroke="#fd7e14" strokeWidth={1 / zoomState.scale} strokeDasharray="2,2"
+        />
+        
+        {/* Descender */}
+        <line
+          x1="0" y1={fontMetrics.unitsPerEm - fontMetrics.descender}
+          x2="100%" y2={fontMetrics.unitsPerEm - fontMetrics.descender}
+          stroke="#e83e8c" strokeWidth={1 / zoomState.scale} strokeDasharray="2,2"
+        />
+      </g>
+    );
+  };
+
+  // Render metric labels
+  const renderMetricLabels = () => {
+    if (!fontMetrics || !positioningState.showMetricGuides) return null;
+    
+    return (
+      <g className="metric-labels" style={{ pointerEvents: "none" }}>
+        <text x="5" y={fontMetrics.unitsPerEm - 0 - 5} 
+              fontSize="10" fill="#28a745">Baseline</text>
+        <text x="5" y={fontMetrics.unitsPerEm - fontMetrics.xHeight - 5} 
+              fontSize="10" fill="#17a2b8">X-Height</text>
+        <text x="5" y={fontMetrics.unitsPerEm - fontMetrics.capHeight - 5} 
+              fontSize="10" fill="#6f42c1">Cap Height</text>
+        <text x="5" y={fontMetrics.unitsPerEm - fontMetrics.ascender - 5} 
+              fontSize="10" fill="#fd7e14">Ascender</text>
+        <text x="5" y={fontMetrics.unitsPerEm - fontMetrics.descender - 5} 
+              fontSize="10" fill="#e83e8c">Descender</text>
+      </g>
+    );
+  };
 
   // Render node handles
   const renderNodeHandle = (node: SVGPathNode, index: number) => {
@@ -482,7 +681,12 @@ export function InteractiveSVGEditor({
         {/* Editing Mode Tools */}
         <div className="flex gap-1">
           <button
-            onClick={() => setEditingState(prev => ({ ...prev, editMode: "select" }))}
+            onClick={() => setEditingState(prev => ({ 
+              ...prev, 
+              editMode: "select",
+              selectedPathId: null,
+              isPathHovered: false
+            }))}
             className={`p-2 rounded text-sm font-medium transition-colors ${
               editingState.editMode === "select"
                 ? "bg-blue-500 text-white"
@@ -493,7 +697,12 @@ export function InteractiveSVGEditor({
             Select
           </button>
           <button
-            onClick={() => setEditingState(prev => ({ ...prev, editMode: "add" }))}
+            onClick={() => setEditingState(prev => ({ 
+              ...prev, 
+              editMode: "add",
+              selectedPathId: null,
+              isPathHovered: false
+            }))}
             className={`p-2 rounded text-sm font-medium transition-colors ${
               editingState.editMode === "add"
                 ? "bg-green-500 text-white"
@@ -504,7 +713,12 @@ export function InteractiveSVGEditor({
             Add
           </button>
           <button
-            onClick={() => setEditingState(prev => ({ ...prev, editMode: "delete" }))}
+            onClick={() => setEditingState(prev => ({ 
+              ...prev, 
+              editMode: "delete",
+              selectedPathId: null,
+              isPathHovered: false
+            }))}
             className={`p-2 rounded text-sm font-medium transition-colors ${
               editingState.editMode === "delete"
                 ? "bg-red-500 text-white"
@@ -514,6 +728,38 @@ export function InteractiveSVGEditor({
           >
             Delete
           </button>
+        </div>
+        
+        {/* Divider */}
+        <div className="w-px bg-gray-300"></div>
+        
+        {/* Move Path Tool */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => setEditingState(prev => ({ 
+              ...prev, 
+              editMode: "move-path",
+              selectedPathId: null,
+              isPathHovered: false
+            }))}
+            className={`p-2 rounded text-sm font-medium transition-colors ${
+              editingState.editMode === "move-path"
+                ? "bg-purple-500 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+            title="Move entire glyph path"
+          >
+            Move Path
+          </button>
+          {(editingState.selectedPathId || isDraggingRef.current) && (
+            <button
+              onClick={forceStopDragging}
+              className="p-2 rounded text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+              title="Emergency stop - clear all selections and dragging"
+            >
+              Stop
+            </button>
+          )}
         </div>
         
         {/* Divider */}
@@ -559,6 +805,60 @@ export function InteractiveSVGEditor({
       {/* Toolbar */}
       {renderToolbar()}
       
+      {/* Glyph Positioning Controls */}
+      {fontMetrics && (
+        <div className="positioning-controls bg-gray-50 border-b p-3">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={positioningState.showMetricGuides}
+                  onChange={(e) => setPositioningState(prev => ({ ...prev, showMetricGuides: e.target.checked }))}
+                  className="rounded"
+                />
+                Show Guides
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={positioningState.snapToMetrics}
+                  onChange={(e) => setPositioningState(prev => ({ ...prev, snapToMetrics: e.target.checked }))}
+                  className="rounded"
+                />
+                Snap to Metrics
+              </label>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <label className="text-sm">
+                Path Offset Y:
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  value={positioningState.pathOffset.y}
+                  onChange={(e) => setPositioningState(prev => ({ 
+                    ...prev, 
+                    pathOffset: { ...prev.pathOffset, y: parseInt(e.target.value) }
+                  }))}
+                  className="mx-2 w-24"
+                />
+                <span className="text-xs font-mono">{positioningState.pathOffset.y}</span>
+              </label>
+            </div>
+            
+            <div className="flex gap-4 text-xs text-gray-600">
+              <span>Baseline: Y=0</span>
+              <span>X-Height: Y={fontMetrics.xHeight}</span>
+              <span>Cap Height: Y={fontMetrics.capHeight}</span>
+              <span>Ascender: Y={fontMetrics.ascender}</span>
+              <span>Descender: Y={fontMetrics.descender}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* SVG Editor */}
       <div 
         ref={containerRef}
@@ -578,6 +878,10 @@ export function InteractiveSVGEditor({
           onMouseMove={(e) => {
             handleMouseMove(e);
             handlePanMove(e);
+            // Only handle path drag if we're actively dragging a path
+            if (editingState.selectedPathId && isDraggingRef.current) {
+              handlePathDrag(e);
+            }
           }}
           onMouseUp={() => {
             handleMouseUp();
@@ -587,7 +891,10 @@ export function InteractiveSVGEditor({
             handleMouseUp();
             handlePanEnd();
           }}
-          onMouseDown={handlePanStart}
+          onMouseDown={(e) => {
+            handlePanStart(e);
+            handlePathMouseDown(e);
+          }}
           onClick={handlePathClick}
         >
           {/* Grid background for reference */}
@@ -614,13 +921,30 @@ export function InteractiveSVGEditor({
           
           {/* Transform group for zoom and pan */}
           <g transform={`translate(${zoomState.translateX}, ${zoomState.translateY}) scale(${zoomState.scale})`}>
+            {/* Font metric guides */}
+            {renderMetricGuides()}
+            {renderMetricLabels()}
+            
             {/* Main path */}
             <path
               d={currentPath}
-              fill="currentColor"
-              stroke="none"
-              opacity={0.8}
-              style={{ pointerEvents: editingState.editMode === "add" ? "all" : "none" }}
+              fill={editingState.selectedPathId ? "#8b5cf6" : editingState.isPathHovered ? "#a855f7" : "currentColor"}
+              stroke={editingState.selectedPathId ? "#7c3aed" : editingState.isPathHovered ? "#9333ea" : "#6c757d"}
+              strokeWidth={editingState.selectedPathId ? 2 / zoomState.scale : editingState.isPathHovered ? 1.5 / zoomState.scale : 1 / zoomState.scale}
+              opacity={editingState.selectedPathId ? 1 : editingState.isPathHovered ? 0.9 : 0.8}
+              style={{ 
+                pointerEvents: editingState.editMode === "add" || editingState.editMode === "move-path" ? "all" : "none",
+                cursor: editingState.editMode === "move-path" ? (editingState.selectedPathId ? "grabbing" : "grab") : "default"
+              }}
+              onMouseEnter={() => {
+                if (editingState.editMode === "move-path") {
+                  setEditingState(prev => ({ ...prev, isPathHovered: true }));
+                }
+              }}
+              onMouseLeave={() => {
+                setEditingState(prev => ({ ...prev, isPathHovered: false }));
+              }}
+              onMouseDown={handlePathMouseDown}
             />
             
             {/* Path outline for better visibility */}
@@ -643,6 +967,8 @@ export function InteractiveSVGEditor({
       <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-600">
         {editableData.nodes.length} nodes • Mode: {editingState.editMode} • Zoom: {(zoomState.scale * 100).toFixed(0)}%
         {editingState.selectedNodeId && ` • Selected: ${editingState.selectedNodeId}`}
+        {editingState.selectedPathId && ` • Path Selected`}
+        {positioningState.pathOffset.x !== 0 || positioningState.pathOffset.y !== 0 ? ` • Offset: (${positioningState.pathOffset.x.toFixed(1)}, ${positioningState.pathOffset.y.toFixed(1)})` : ''}
       </div>
     </div>
   );

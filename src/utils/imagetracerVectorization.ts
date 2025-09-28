@@ -13,7 +13,7 @@ async function initImageTracer() {
       console.log('🔍 ImageTracer module structure:', Object.keys(imageTracerModule));
       
       // ImageTracer is a class that needs to be instantiated
-      ImageTracer = imageTracerModule.ImageTracer || imageTracerModule.default?.ImageTracer;
+      ImageTracer = (imageTracerModule as any).ImageTracer || (imageTracerModule as any).default?.ImageTracer;
       
       console.log('🔍 ImageTracer class type:', typeof ImageTracer);
       

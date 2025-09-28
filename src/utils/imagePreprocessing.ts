@@ -75,22 +75,7 @@ function toGrayscale(imageData: ImageData): void {
   }
 }
 
-/**
- * Enhance contrast using a sigmoid function
- */
-function enhanceContrast(imageData: ImageData, intensity: number): void {
-  const data = imageData.data;
-  const factor = (259 * (intensity + 255)) / (255 * (259 - intensity));
-  
-  for (let i = 0; i < data.length; i += 4) {
-    // Apply contrast enhancement to RGB channels
-    for (let j = 0; j < 3; j++) {
-      let value = data[i + j];
-      value = factor * (value - 128) + 128;
-      data[i + j] = Math.max(0, Math.min(255, value));
-    }
-  }
-}
+// Contrast enhancement function removed - not currently used
 
 /**
  * Apply gentle smoothing to eliminate pixel irregularities that cause jags
@@ -159,21 +144,7 @@ function reduceNoise(imageData: ImageData): void {
   }
 }
 
-/**
- * Get contrast enhancement level based on quality setting
- */
-function getContrastLevel(quality: VectorizationQuality): number {
-  switch (quality) {
-    case 'fast':
-      return 30; // Light contrast enhancement
-    case 'balanced':
-      return 50; // Moderate contrast enhancement
-    case 'high':
-      return 70; // Strong contrast enhancement
-    default:
-      return 50;
-  }
-}
+// Contrast level function removed - not currently used
 
 /**
  * Resize image if it's too large for processing
