@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.0 - 2025-10-08
+
+### Added
+- feat(ui): comprehensive modal system with reusable components (refs c9b0e93)
+- Modal, ModalHeader, ModalBody, ModalFooter components with accessibility features
+- useModal hook for centralized modal state management with keyboard navigation
+- InfoButton component for contextual help triggers
+- CharacterSetInfoModal for character set information display
+- ExportInfoModal for export process guidance
+- PathEditorModal for SVG path editing interface
+- QuickTipsModal for user guidance and tips
+- Modular CSS architecture with organized stylesheets (variables, fonts, base, layout, components, utilities)
+
+### Changed
+- Enhanced font creation interface with improved component organization
+- Refactored CSS architecture from monolithic files to modular system
+- Improved SVG editor functionality and processing pipeline
+- Better component architecture with improved separation of concerns
+- Enhanced user experience with contextual help and information display
+
+### Fixed
+- Improved accessibility with proper modal focus management
+- Better keyboard navigation and escape key handling
+- Enhanced component maintainability and reusability
+
 ## 0.3.0 - 2025-09-28
 
 ### Added
