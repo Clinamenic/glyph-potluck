@@ -72,9 +72,9 @@ export class FontGenerator {
       // Calculate font metrics
       this.updateProgress('calculating', 40, 'Calculating font metrics...');
       const metrics = FontMetricsCalculator.calculateFontMetrics(glyphs);
-      
+
       console.log('🔍 Calculated font metrics:', metrics);
-      
+
       // Validate metrics
       const metricsValidation = FontMetricsCalculator.validateFontMetrics(metrics);
       if (metricsValidation.warnings.length > 0) {
@@ -159,7 +159,7 @@ export class FontGenerator {
       try {
         // Convert Unicode string to number
         const unicodeNumber = parseInt(unicode.replace('U+', ''), 16);
-        
+
         // Convert SVG to OpenType glyph
         const glyph = GlyphConverter.svgPathToOpenTypeGlyph(charData.vectorData, unicodeNumber);
         glyphs.push(glyph);
@@ -182,18 +182,18 @@ export class FontGenerator {
    * Builds an OpenType font from glyphs and metrics
    */
   private async buildOpenTypeFont(
-    glyphs: opentype.Glyph[], 
-    metrics: FontMetrics, 
+    glyphs: opentype.Glyph[],
+    metrics: FontMetrics,
     settings: FontSettings
   ): Promise<opentype.Font> {
-    
+
     // Add required glyphs (space, null, etc.)
     const requiredGlyphs = this.createRequiredGlyphs(metrics);
     const allGlyphs = [...requiredGlyphs, ...glyphs];
 
     // Ensure descender is negative (OpenType.js requirement)
     const descender = Math.abs(metrics.descender) > 0 ? -Math.abs(metrics.descender) : -200;
-    
+
     console.log('🔍 Font creation metrics:', {
       unitsPerEm: metrics.unitsPerEm,
       ascender: metrics.ascender,
@@ -201,10 +201,10 @@ export class FontGenerator {
       originalDescender: metrics.descender
     });
 
-    // Create font instance
+    // Create font instance with hardcoded defaults
     const font = new opentype.Font({
       familyName: settings.metadata.familyName,
-      styleName: settings.metadata.style,
+      styleName: 'Regular', // Hardcoded default
       unitsPerEm: metrics.unitsPerEm,
       ascender: metrics.ascender,
       descender: descender,
@@ -213,7 +213,7 @@ export class FontGenerator {
 
     // Add font metadata
     font.names.fontFamily = { en: settings.metadata.familyName };
-    font.names.fontSubfamily = { en: settings.metadata.style };
+    font.names.fontSubfamily = { en: 'Regular' }; // Hardcoded default
     font.names.manufacturer = { en: settings.metadata.author || 'Glyph Potluck' };
     font.names.description = { en: settings.metadata.description || '' };
     font.names.license = { en: settings.metadata.license || 'MIT' };
@@ -258,7 +258,7 @@ export class FontGenerator {
   private async compileFontFormats(font: opentype.Font, _metadata: any): Promise<CompiledFont> {
     // Generate TTF format
     const ttfBuffer = font.toArrayBuffer();
-    
+
     // Calculate checksum
     const checksum = await this.calculateChecksum(ttfBuffer);
 
@@ -290,8 +290,8 @@ export class FontGenerator {
    * Updates progress and calls the progress callback
    */
   private updateProgress(
-    stage: FontGenerationProgress['stage'], 
-    progress: number, 
+    stage: FontGenerationProgress['stage'],
+    progress: number,
     message: string,
     currentGlyph?: string,
     totalGlyphs?: number

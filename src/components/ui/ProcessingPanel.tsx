@@ -77,47 +77,47 @@ export function ProcessingPanel() {
         </div>
       </div>
 
-      {/* Processing button */}
-      <div className="space-y-4">
-        <button
-          onClick={handleProcessAll}
-          disabled={processingState.status === 'processing' || uploadedFiles.length === 0}
-          className="btn btn-primary btn-lg w-full"
-        >
-          {processingState.status === 'processing' ? (
-            <div className="flex items-center gap-3">
-              <div className="loading-spinner" />
-              Processing...
-            </div>
-          ) : (
-            `Convert ${uploadedFiles.length} ${uploadedFiles.length === 1 ? 'Image' : 'Images'} to Vectors`
-          )}
-        </button>
+      {/* Card Footer with Processing Actions and Status */}
+      <div className="card-footer card-footer--center">
+        <div className="card-footer-actions">
+          <button
+            onClick={handleProcessAll}
+            disabled={processingState.status === 'processing' || uploadedFiles.length === 0}
+            className="btn btn-primary btn-lg w-full"
+          >
+            {processingState.status === 'processing' ? (
+              <div className="flex items-center gap-3">
+                <div className="loading-spinner" />
+                Processing...
+              </div>
+            ) : (
+              `Convert ${uploadedFiles.length} ${uploadedFiles.length === 1 ? 'Image' : 'Images'} to Vectors`
+            )}
+          </button>
+        </div>
 
+        {/* Processing Status */}
         {processingState.status === 'processing' && (
-          <div className="space-y-2">
+          <div className="card-footer-meta">
             <div className="progress-bar">
-              <div 
+              <div
                 className="progress-bar-fill"
                 style={{ width: `${processingState.progress}%` }}
               />
             </div>
-            <p className="text-sm text-gray-600 text-center">
-              {processingState.message}
-            </p>
+            <span className="text-blue-600">{processingState.message}</span>
           </div>
         )}
 
         {processingState.status === 'error' && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 font-medium">Processing Error</p>
-            <p className="text-red-500 text-sm">{processingState.error}</p>
+          <div className="card-footer-meta">
+            <span className="text-red-600">❌ Processing Error: {processingState.error}</span>
           </div>
         )}
 
         {processingState.status === 'completed' && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-600 font-medium">✅ {processingState.message}</p>
+          <div className="card-footer-meta">
+            <span className="text-green-600">✅ {processingState.message}</span>
           </div>
         )}
       </div>

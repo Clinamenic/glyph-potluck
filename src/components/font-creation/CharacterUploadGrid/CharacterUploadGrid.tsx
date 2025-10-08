@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CharacterTile } from './CharacterTile';
-import { CharacterSet, organizeCharactersForDisplay } from '../../../data/character-sets';
+import { CharacterSet } from '../../../data/character-sets';
 import { CharacterData } from '../../../services/storage/CharacterDataStorage';
 
 interface CharacterUploadGridProps {
@@ -11,9 +11,93 @@ interface CharacterUploadGridProps {
   selectedCharacter?: string;
   showCategories?: boolean;
   searchFilter?: string;
+  categoryFilter?: CategoryFilter;
+  onCategoryFilterChange?: (filter: CategoryFilter) => void;
 }
 
-type CategoryFilter = 'all' | 'uppercase' | 'lowercase' | 'digits' | 'punctuation' | 'symbols' | 'space';
+export type CategoryFilter = 'all' | 'uppercase' | 'lowercase' | 'digits' | 'punctuation' | 'symbols' | 'space';
+
+interface CharacterGridFiltersProps {
+  characterSet: CharacterSet;
+  characterDataMap: Map<string, CharacterData>;
+  categoryFilter: CategoryFilter;
+  onCategoryFilterChange: (filter: CategoryFilter) => void;
+}
+
+export const CharacterGridFilters: React.FC<CharacterGridFiltersProps> = ({
+  characterSet,
+  characterDataMap: _characterDataMap,
+  categoryFilter,
+  onCategoryFilterChange
+}) => {
+  const getCategoryStats = useMemo(() => {
+    const stats = {
+      all: characterSet.characters.length,
+      uppercase: 0,
+      lowercase: 0,
+      digits: 0,
+      punctuation: 0,
+      symbols: 0,
+      space: 0
+    };
+
+    characterSet.characters.forEach(char => {
+      switch (char.category) {
+        case 'uppercase':
+          stats.uppercase++;
+          break;
+        case 'lowercase':
+          stats.lowercase++;
+          break;
+        case 'digit':
+          stats.digits++;
+          break;
+        case 'punctuation':
+          stats.punctuation++;
+          break;
+        case 'symbol':
+          stats.symbols++;
+          break;
+        case 'space':
+          stats.space++;
+          break;
+      }
+    });
+
+    return stats;
+  }, [characterSet.characters]);
+
+  const CategoryButton: React.FC<{
+    category: CategoryFilter;
+    label: string;
+    count: number;
+  }> = ({ category, label, count }) => (
+    <button
+      onClick={() => onCategoryFilterChange(category)}
+      className={`category-button ${categoryFilter === category
+        ? 'category-button--active'
+        : 'category-button--inactive'
+        }`}
+    >
+      {label} ({count})
+    </button>
+  );
+
+
+  return (
+    <div className="character-grid-filters">
+      <CategoryButton category="all" label="All" count={getCategoryStats.all} />
+      <CategoryButton category="uppercase" label="Uppercase" count={getCategoryStats.uppercase} />
+      <CategoryButton category="lowercase" label="Lowercase" count={getCategoryStats.lowercase} />
+      <CategoryButton category="digits" label="Digits" count={getCategoryStats.digits} />
+      <CategoryButton category="punctuation" label="Punctuation" count={getCategoryStats.punctuation} />
+      <CategoryButton category="symbols" label="Symbols" count={getCategoryStats.symbols} />
+      {getCategoryStats.space > 0 && (
+        <CategoryButton category="space" label="Space" count={getCategoryStats.space} />
+      )}
+    </div>
+  );
+};
 
 export const CharacterUploadGrid: React.FC<CharacterUploadGridProps> = ({
   characterSet,
@@ -21,14 +105,15 @@ export const CharacterUploadGrid: React.FC<CharacterUploadGridProps> = ({
   onFileUpload,
   onCharacterSelect,
   selectedCharacter,
-  showCategories = true,
-  searchFilter = ''
+  showCategories: _showCategories = true,
+  searchFilter = '',
+  categoryFilter: externalCategoryFilter,
+  onCategoryFilterChange: _onCategoryFilterChange
 }) => {
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
-  
-  const organizedCharacters = useMemo(() => {
-    return organizeCharactersForDisplay(characterSet);
-  }, [characterSet]);
+  const [_internalCategoryFilter, _setInternalCategoryFilter] = useState<CategoryFilter>('all');
+
+  // Use external filter if provided, otherwise use internal state
+  const categoryFilter = externalCategoryFilter !== undefined ? externalCategoryFilter : _internalCategoryFilter;
 
   const filteredCharacters = useMemo(() => {
     let characters = characterSet.characters;
@@ -58,7 +143,7 @@ export const CharacterUploadGrid: React.FC<CharacterUploadGridProps> = ({
     // Apply search filter
     if (searchFilter) {
       const search = searchFilter.toLowerCase();
-      characters = characters.filter(char => 
+      characters = characters.filter(char =>
         char.char.toLowerCase().includes(search) ||
         char.name.toLowerCase().includes(search) ||
         char.unicode.toLowerCase().includes(search)
@@ -68,87 +153,8 @@ export const CharacterUploadGrid: React.FC<CharacterUploadGridProps> = ({
     return characters;
   }, [characterSet.characters, categoryFilter, searchFilter]);
 
-  const getCategoryStats = () => {
-    return {
-      all: characterSet.characters.length,
-      uppercase: organizedCharacters.uppercase.length,
-      lowercase: organizedCharacters.lowercase.length,
-      digits: organizedCharacters.digits.length,
-      punctuation: organizedCharacters.punctuation.length,
-      symbols: organizedCharacters.symbols.length,
-      space: organizedCharacters.space.length
-    };
-  };
-
-  const getUploadStats = () => {
-    const uploaded = Array.from(characterDataMap.values()).filter(data => 
-      data.status !== 'empty'
-    ).length;
-    const total = characterSet.characters.length;
-    const percentage = total > 0 ? Math.round((uploaded / total) * 100) : 0;
-    
-    return { uploaded, total, percentage };
-  };
-
-  const stats = getCategoryStats();
-  const uploadStats = getUploadStats();
-
-  const CategoryButton: React.FC<{ 
-    category: CategoryFilter; 
-    label: string; 
-    count: number;
-  }> = ({ category, label, count }) => (
-    <button
-      onClick={() => setCategoryFilter(category)}
-      className={`
-        px-3 py-1 rounded-full text-sm font-medium transition-colors
-        ${categoryFilter === category 
-          ? 'bg-blue-500 text-white' 
-          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-        }
-      `}
-    >
-      {label} ({count})
-    </button>
-  );
-
   return (
-    <div className="space-y-4">
-      {/* Header with stats */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">
-            {characterSet.name}
-          </h3>
-          <p className="text-sm text-gray-600">
-            {uploadStats.uploaded} of {uploadStats.total} characters uploaded ({uploadStats.percentage}%)
-          </p>
-        </div>
-        
-        {/* Progress bar */}
-        <div className="w-32 bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${uploadStats.percentage}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Category filters */}
-      {showCategories && (
-        <div className="flex flex-wrap gap-2">
-          <CategoryButton category="all" label="All" count={stats.all} />
-          <CategoryButton category="uppercase" label="Uppercase" count={stats.uppercase} />
-          <CategoryButton category="lowercase" label="Lowercase" count={stats.lowercase} />
-          <CategoryButton category="digits" label="Digits" count={stats.digits} />
-          <CategoryButton category="punctuation" label="Punctuation" count={stats.punctuation} />
-          <CategoryButton category="symbols" label="Symbols" count={stats.symbols} />
-          {stats.space > 0 && (
-            <CategoryButton category="space" label="Space" count={stats.space} />
-          )}
-        </div>
-      )}
-
+    <div className="character-grid-container">
       {/* Character grid */}
       <div className="character-grid">
         {filteredCharacters.map((character) => (
@@ -166,8 +172,8 @@ export const CharacterUploadGrid: React.FC<CharacterUploadGridProps> = ({
 
       {/* Empty state */}
       {filteredCharacters.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
-          {searchFilter 
+        <div className="character-grid-empty">
+          {searchFilter
             ? `No characters found matching "${searchFilter}"`
             : 'No characters in this category'
           }
@@ -175,7 +181,7 @@ export const CharacterUploadGrid: React.FC<CharacterUploadGridProps> = ({
       )}
 
       {/* Character count info */}
-      <div className="text-sm text-gray-500 text-center">
+      <div className="character-grid-count">
         Showing {filteredCharacters.length} of {characterSet.characters.length} characters
       </div>
     </div>

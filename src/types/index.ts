@@ -102,12 +102,12 @@ export interface PositioningState {
 // Font generation types
 export interface FontMetadata {
   familyName: string;
-  style: 'Regular' | 'Bold' | 'Italic' | 'Bold Italic';
-  weight: number;
   version: string;
   description?: string;
   author?: string;
   license?: string;
+  style?: string;
+  weight?: string;
   // Advanced font metrics
   ascender?: number;
   descender?: number;
@@ -173,7 +173,7 @@ export interface GlyphStore {
   processedGlyphs: ProcessedGlyph[];
   processingState: ProcessingState;
   selectedQuality: VectorizationQuality;
-  
+
   // Actions
   addFiles: (files: File[]) => Promise<void>;
   removeFile: (fileId: string) => void;
@@ -196,7 +196,7 @@ export interface FontStore {
   characterMappings: CharacterMapping[];
   compiledFont: CompiledFont | null;
   generationState: ProcessingState;
-  
+
   // Actions
   updateFontSettings: (settings: Partial<FontSettings>) => void;
   setCharacterMapping: (glyphId: string, unicode: string) => void;
@@ -209,7 +209,7 @@ export interface AppStore {
   // State
   appState: AppState;
   uiState: UIState;
-  
+
   // Actions
   setCurrentStep: (step: WizardStep) => void;
   nextStep: () => void;
@@ -226,7 +226,7 @@ export interface AppError {
   timestamp: Date;
 }
 
-export type ErrorType = 
+export type ErrorType =
   | 'FILE_UPLOAD_ERROR'
   | 'VECTORIZATION_ERROR'
   | 'FONT_GENERATION_ERROR'

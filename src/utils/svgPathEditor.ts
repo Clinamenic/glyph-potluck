@@ -18,80 +18,111 @@ export class SVGPathEditor {
 
     const nodes: SVGPathNode[] = [];
     let nodeIdCounter = 0;
+    let lastControlPoint: { x: number; y: number } | null = null; // For smooth curves
 
     try {
       // Split path into commands - handle both uppercase and lowercase
       const commands = pathString.split(/(?=[MmLlHhVvCcSsQqTtAaZz])/i).filter(cmd => cmd.trim());
-      
+
       for (const commandStr of commands) {
         const trimmed = commandStr.trim();
         if (!trimmed) continue;
 
-        const command = trimmed[0].toUpperCase();
-        const values = trimmed.slice(1)
-          .split(/[\s,]+/)
-          .filter(v => v && !isNaN(Number(v)))
-          .map(Number);
+        try {
+          const command = trimmed[0].toUpperCase();
+          const values = trimmed.slice(1)
+            .split(/[\s,]+/)
+            .filter(v => v && !isNaN(Number(v)))
+            .map(Number);
 
-        switch (command) {
-          case 'M': // MoveTo
-            if (values.length >= 2) {
+          switch (command) {
+            case 'M': // MoveTo
+              if (values.length >= 2) {
+                nodes.push({
+                  id: `node_${nodeIdCounter++}`,
+                  type: 'move',
+                  x: values[0],
+                  y: values[1],
+                });
+              }
+              break;
+
+            case 'L': // LineTo
+              if (values.length >= 2) {
+                nodes.push({
+                  id: `node_${nodeIdCounter++}`,
+                  type: 'line',
+                  x: values[0],
+                  y: values[1],
+                });
+              }
+              break;
+
+            case 'Q': // QuadraticCurveTo
+              if (values.length >= 4) {
+                nodes.push({
+                  id: `node_${nodeIdCounter++}`,
+                  type: 'curve',
+                  x: values[2],
+                  y: values[3],
+                  controlPoint1: { x: values[0], y: values[1] },
+                });
+              }
+              break;
+
+            case 'C': // CubicCurveTo
+              if (values.length >= 6) {
+                nodes.push({
+                  id: `node_${nodeIdCounter++}`,
+                  type: 'curve',
+                  x: values[4],
+                  y: values[5],
+                  controlPoint1: { x: values[0], y: values[1] },
+                  controlPoint2: { x: values[2], y: values[3] },
+                });
+                // Update last control point for smooth curves
+                lastControlPoint = { x: values[2], y: values[3] };
+              }
+              break;
+
+            case 'S': // SmoothCubicCurveTo
+              if (values.length >= 4) {
+                // For now, treat S like C (smooth curves not fully implemented)
+                // Calculate the first control point by reflecting the last control point
+                let controlPoint1 = lastControlPoint;
+                if (!controlPoint1) {
+                  // If no previous control point, mirror the second control point
+                  controlPoint1 = { x: 2 * values[2] - values[0], y: 2 * values[3] - values[1] };
+                }
+
+                nodes.push({
+                  id: `node_${nodeIdCounter++}`,
+                  type: 'curve',
+                  x: values[2],
+                  y: values[3],
+                  controlPoint1: controlPoint1,
+                  controlPoint2: { x: values[0], y: values[1] },
+                });
+                // Update last control point for smooth curves
+                lastControlPoint = { x: values[0], y: values[1] };
+              }
+              break;
+
+            case 'Z': // ClosePath
               nodes.push({
                 id: `node_${nodeIdCounter++}`,
-                type: 'move',
-                x: values[0],
-                y: values[1],
+                type: 'close',
+                x: 0,
+                y: 0,
               });
-            }
-            break;
+              break;
 
-          case 'L': // LineTo
-            if (values.length >= 2) {
-              nodes.push({
-                id: `node_${nodeIdCounter++}`,
-                type: 'line',
-                x: values[0],
-                y: values[1],
-              });
-            }
-            break;
-
-          case 'Q': // QuadraticCurveTo
-            if (values.length >= 4) {
-              nodes.push({
-                id: `node_${nodeIdCounter++}`,
-                type: 'curve',
-                x: values[2],
-                y: values[3],
-                controlPoint1: { x: values[0], y: values[1] },
-              });
-            }
-            break;
-
-          case 'C': // CubicCurveTo
-            if (values.length >= 6) {
-              nodes.push({
-                id: `node_${nodeIdCounter++}`,
-                type: 'curve',
-                x: values[4],
-                y: values[5],
-                controlPoint1: { x: values[0], y: values[1] },
-                controlPoint2: { x: values[2], y: values[3] },
-              });
-            }
-            break;
-
-          case 'Z': // ClosePath
-            nodes.push({
-              id: `node_${nodeIdCounter++}`,
-              type: 'close',
-              x: 0,
-              y: 0,
-            });
-            break;
-
-          default:
-            console.warn(`⚠️ Unsupported path command: ${command}`);
+            default:
+              console.warn(`⚠️ Unsupported path command: ${command}`);
+          }
+        } catch (commandError) {
+          console.error(`❌ Error parsing command "${trimmed}":`, commandError);
+          // Continue with next command
         }
       }
 
@@ -210,22 +241,22 @@ export class SVGPathEditor {
       const nodeIndex = nodes.findIndex(node => node.id === nodeId);
       if (nodeIndex === -1) {
         console.warn(`⚠️ Node with ID ${nodeId} not found`);
-        return { 
-          nodes, 
-          success: false, 
-          message: "Node not found" 
+        return {
+          nodes,
+          success: false,
+          message: "Node not found"
         };
       }
 
       const nodeToRemove = nodes[nodeIndex];
-      
+
       // Don't allow removal of move commands or if it would break the path
       if (nodeToRemove.type === 'move' && nodeIndex === 0) {
         console.warn('⚠️ Cannot remove the first move command');
-        return { 
-          nodes, 
-          success: false, 
-          message: "Cannot delete the starting point of the path" 
+        return {
+          nodes,
+          success: false,
+          message: "Cannot delete the starting point of the path"
         };
       }
 
@@ -240,17 +271,17 @@ export class SVGPathEditor {
 
       const newNodes = nodes.filter(node => node.id !== nodeId);
       console.log(`✅ Removed node ${nodeId}, ${newNodes.length} nodes remaining`);
-      return { 
-        nodes: newNodes, 
-        success: true, 
-        message: `Successfully removed node` 
+      return {
+        nodes: newNodes,
+        success: true,
+        message: `Successfully removed node`
       };
     } catch (error) {
       console.error('❌ Error removing node:', error);
-      return { 
-        nodes, 
-        success: false, 
-        message: "Error occurred while removing node" 
+      return {
+        nodes,
+        success: false,
+        message: "Error occurred while removing node"
       };
     }
   }
@@ -274,7 +305,7 @@ export class SVGPathEditor {
 
       const newNodes = [...nodes];
       const node = { ...newNodes[nodeIndex] };
-      
+
       // Calculate the movement delta
       const deltaX = newPosition.x - node.x;
       const deltaY = newPosition.y - node.y;
@@ -318,7 +349,7 @@ export class SVGPathEditor {
     console.log('🔧 Creating editable path data from SVG path');
 
     const nodes = SVGPathEditor.parsePathToNodes(pathString);
-    
+
     return {
       nodes,
       viewBox: {
@@ -342,7 +373,7 @@ export class SVGPathEditor {
     }
 
     const simplified: SVGPathNode[] = [];
-    
+
     // Always keep the first node
     simplified.push(nodes[0]);
 

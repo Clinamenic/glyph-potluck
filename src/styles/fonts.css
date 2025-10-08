@@ -1,0 +1,105 @@
+/* Geist Mono Thin */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmQ5e6jXzTmgWFK4jpbr4eAfRFyqf922cfr6CkQMrj2PPg);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmQ5e6jXzTmgWFK4jpbr4eAfRFyqf922cfr6CkQMrj2PPg) format("opentype");
+  font-weight: 100;
+}
+
+/* Geist Mono Ultralight */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/Qma6K2ZE6Ch7K76xkHQ8NFZ4odzNMDmDc41pcUVMBdSNot);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/Qma6K2ZE6Ch7K76xkHQ8NFZ4odzNMDmDc41pcUVMBdSNot) format("opentype");
+  font-weight: 200;
+}
+
+/* Geist Mono Light */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmSY4bzyQNZ3XZWTDdJgMovgSyfdrm6fa2wE426kTfkuuN);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmSY4bzyQNZ3XZWTDdJgMovgSyfdrm6fa2wE426kTfkuuN) format("opentype");
+  font-weight: 300;
+}
+
+/* Geist Mono Regular */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmUManxUqYX4sd1R4TjBJbR19YsCaVt7gpqiiuxVb6ins3);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmUManxUqYX4sd1R4TjBJbR19YsCaVt7gpqiiuxVb6ins3) format("opentype");
+  font-weight: 400;
+}
+
+/* Geist Mono Medium */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmPrcRxMJ4wwR3UyKH91iFC7bgeEfJisW4CKSPS9FSdX4M);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmPrcRxMJ4wwR3UyKH91iFC7bgeEfJisW4CKSPS9FSdX4M) format("opentype");
+  font-weight: 500;
+}
+
+/* Geist Mono Semibold */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmcPEgkJ2sRz5oUzxeuGWYp7KRfrLktr1HmX7wzeEBv6c6);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmcPEgkJ2sRz5oUzxeuGWYp7KRfrLktr1HmX7wzeEBv6c6) format("opentype");
+  font-weight: 600;
+}
+
+/* Geist Mono Bold */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmXLsfAzuBZRLRSuxndV6YDng3xZcNWBuMo7kisDZhTmV3);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmXLsfAzuBZRLRSuxndV6YDng3xZcNWBuMo7kisDZhTmV3) format("opentype");
+  font-weight: 700;
+}
+
+/* Geist Mono Black */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmSVHJB1cNPr7j3tm3rZHhEVZnAvmaojL3RPAE6Zy7jYqk);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmSVHJB1cNPr7j3tm3rZHhEVZnAvmaojL3RPAE6Zy7jYqk) format("opentype");
+  font-weight: 800;
+}
+
+/* Geist Mono Ultrablack */
+@font-face {
+  font-family: "GeistMono";
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmZFtLSb3WzJUy8oy3t49iU6MCnsVynKFJmwJcKPGZBbP7);
+  src: url(https://indigo-cautious-chinchilla-877.mypinata.cloud/ipfs/QmZFtLSb3WzJUy8oy3t49iU6MCnsVynKFJmwJcKPGZBbP7) format("opentype");
+  font-weight: 900;
+}
+
+
+
+/* Berzulia Pizius */
+@font-face {
+  font-family: "Berzulia Pizius";
+  src: url(https://www.arweave.net/wwBlrX-jmylhEzA_uUWgvsoD1iQKqiAkAT3u8RyuLXc);
+  src: url(https://www.arweave.net/wwBlrX-jmylhEzA_uUWgvsoD1iQKqiAkAT3u8RyuLXc) format("opentype");
+  font-weight: 100;
+}
+
+/* OnlyTrue Small */
+@font-face {
+  font-family: "OnlyTrue Small";
+  src: url(https://www.arweave.net/MuRoBK2msVYyqK3DGEMJCCnkhA_9GWARLpO9u0Gqc0M);
+  src: url(https://www.arweave.net/MuRoBK2msVYyqK3DGEMJCCnkhA_9GWARLpO9u0Gqc0M) format("opentype");
+  font-weight: 100;
+}
+
+/* OnlyTrue Neutral */
+@font-face {
+  font-family: "OnlyTrue Neutral";
+  src: url(https://www.arweave.net/lLH07orFxYe40KKzoXPcilXHVYiL1SkOqzWfm5MwK8I);
+  src: url(https://www.arweave.net/lLH07orFxYe40KKzoXPcilXHVYiL1SkOqzWfm5MwK8I) format("opentype");
+  font-weight: 100;
+}
+
+/* OnlyTrue Big Blob */
+@font-face {
+  font-family: "OnlyTrue Big Blob";
+  src: url(https://www.arweave.net/SlCZVNOBwJAQaK1Y6ZwH_YzhF-jE0bIx_LhjguHAt8E);
+  src: url(https://www.arweave.net/SlCZVNOBwJAQaK1Y6ZwH_YzhF-jE0bIx_LhjguHAt8E) format("opentype");
+  font-weight: 100;
+}

@@ -34,23 +34,23 @@ export function FontPreview({
   const renderCharacterGrid = () => {
     if (vectorizedCharacters.length === 0) {
       return (
-        <div className="text-center text-gray-500 py-8">
+        <div className="preview-panel-content">
           No vectorized characters available for preview
         </div>
       );
     }
 
     return (
-      <div className="grid grid-cols-8 gap-2">
+      <div className="character-grid">
         {vectorizedCharacters.map((charData) => (
           <div
             key={charData.unicode}
-            className="flex flex-col items-center p-2 border border-gray-200 rounded bg-gray-50"
+            className="character-tile"
           >
-            <div className="text-xs text-gray-600 mb-1">
+            <div className="unicode-label">
               {charData.unicode}
             </div>
-            <div className="w-8 h-8 flex items-center justify-center">
+            <div className="character-display">
               {charData.vectorData ? (
                 <svg
                   viewBox="0 0 200 200"
@@ -67,7 +67,7 @@ export function FontPreview({
                 <span className="text-gray-400">{charData.character}</span>
               )}
             </div>
-            <div className="text-xs text-gray-700 font-mono">
+            <div className="unicode-label">
               {charData.character}
             </div>
           </div>
@@ -77,22 +77,22 @@ export function FontPreview({
   };
 
   const renderCustomPreview = () => (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+    <div className="preview-content-area">
+      <div className="form-field">
+        <label className="form-field-label">
           Preview Text
         </label>
         <textarea
           value={previewText}
           onChange={(e) => setPreviewText(e.target.value)}
           rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="form-field-input"
           placeholder="Enter text to preview..."
         />
       </div>
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+
+      <div className="form-field">
+        <label className="form-field-label">
           Font Size: {fontSize}px
         </label>
         <input
@@ -102,28 +102,28 @@ export function FontPreview({
           step="2"
           value={fontSize}
           onChange={(e) => setFontSize(parseInt(e.target.value))}
-          className="w-full"
+          className="weight-slider-container"
         />
       </div>
 
-      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 min-h-[120px] flex items-center">
+      <div className="preview-text-area">
         {compiledFont ? (
           <div
             style={{
               fontSize: `${fontSize}px`,
               fontFamily: `"${fontSettings.metadata.familyName}", sans-serif`,
-              fontWeight: fontSettings.metadata.weight,
-              fontStyle: fontSettings.metadata.style === 'Italic' || fontSettings.metadata.style === 'Bold Italic' ? 'italic' : 'normal'
+              fontWeight: 400, // Hardcoded default
+              fontStyle: 'normal' // Hardcoded default
             }}
             className="text-gray-900 leading-relaxed"
           >
             {previewText}
           </div>
         ) : (
-          <div className="text-gray-500 text-center w-full">
+          <div className="preview-text-placeholder">
             {isGenerating ? (
               <div className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                <div className="loading-spinner"></div>
                 <span>Generating font preview...</span>
               </div>
             ) : (
@@ -136,41 +136,40 @@ export function FontPreview({
   );
 
   const renderSampleTexts = () => (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 mb-4">
+    <div className="preview-content-area">
+      <div className="preview-sample-buttons">
         {sampleTexts.map((text, index) => (
           <button
             key={index}
             onClick={() => setPreviewText(text)}
-            className={`px-3 py-1 text-sm rounded-md border transition-colors ${
-              previewText === text
-                ? 'bg-blue-50 border-blue-500 text-blue-700'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-            }`}
+            className={`preview-sample-button ${previewText === text
+              ? 'preview-sample-button--active'
+              : 'preview-sample-button--inactive'
+              }`}
           >
             {text.length > 20 ? text.substring(0, 20) + '...' : text}
           </button>
         ))}
       </div>
 
-      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 min-h-[120px] flex items-center">
+      <div className="preview-text-area">
         {compiledFont ? (
           <div
             style={{
               fontSize: `${fontSize}px`,
               fontFamily: `"${fontSettings.metadata.familyName}", sans-serif`,
-              fontWeight: fontSettings.metadata.weight,
-              fontStyle: fontSettings.metadata.style === 'Italic' || fontSettings.metadata.style === 'Bold Italic' ? 'italic' : 'normal'
+              fontWeight: 400, // Hardcoded default
+              fontStyle: 'normal' // Hardcoded default
             }}
             className="text-gray-900 leading-relaxed"
           >
             {previewText}
           </div>
         ) : (
-          <div className="text-gray-500 text-center w-full">
+          <div className="preview-text-placeholder">
             {isGenerating ? (
               <div className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                <div className="loading-spinner"></div>
                 <span>Generating font preview...</span>
               </div>
             ) : (
@@ -183,14 +182,16 @@ export function FontPreview({
   );
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-6">
-      <h3 className="text-xl font-semibold text-gray-900 mb-6">
-        Font Preview
-      </h3>
+    <div className="card">
+      <div className="card-header">
+        <h3 className="card-heading">
+          Font Preview
+        </h3>
+      </div>
 
       {/* Preview Mode Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
+      <div className="preview-tabs">
+        <nav className="preview-tab-nav">
           {[
             { id: 'sample', label: 'Sample Text' },
             { id: 'grid', label: 'Character Grid' },
@@ -199,11 +200,10 @@ export function FontPreview({
             <button
               key={tab.id}
               onClick={() => setPreviewMode(tab.id as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                previewMode === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`preview-tab-button ${previewMode === tab.id
+                ? 'preview-tab-button--active'
+                : 'preview-tab-button--inactive'
+                }`}
             >
               {tab.id === 'grid' ? `${tab.label} (${vectorizedCharacters.length})` : tab.label}
             </button>
@@ -212,31 +212,31 @@ export function FontPreview({
       </div>
 
       {/* Preview Content */}
-      <div className="space-y-6">
+      <div className="preview-content-area">
         {previewMode === 'sample' && renderSampleTexts()}
         {previewMode === 'grid' && renderCharacterGrid()}
         {previewMode === 'custom' && renderCustomPreview()}
       </div>
 
       {/* Font Information */}
-      <div className="mt-6 pt-6 border-t border-gray-200">
-        <h4 className="text-sm font-medium text-gray-700 mb-3">Font Information</h4>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-500">Family:</span>
-            <span className="ml-2 font-medium">{fontSettings.metadata.familyName}</span>
+      <div className="preview-info-section">
+        <h4 className="preview-info-title">Font Information</h4>
+        <div className="preview-info-grid">
+          <div className="preview-info-item">
+            <span className="preview-info-label">Family:</span>
+            <span className="preview-info-value">{fontSettings.metadata.familyName}</span>
           </div>
-          <div>
-            <span className="text-gray-500">Style:</span>
-            <span className="ml-2 font-medium">{fontSettings.metadata.style}</span>
+          <div className="preview-info-item">
+            <span className="preview-info-label">Style:</span>
+            <span className="preview-info-value">{fontSettings.metadata.style}</span>
           </div>
-          <div>
-            <span className="text-gray-500">Weight:</span>
-            <span className="ml-2 font-medium">{fontSettings.metadata.weight}</span>
+          <div className="preview-info-item">
+            <span className="preview-info-label">Weight:</span>
+            <span className="preview-info-value">{fontSettings.metadata.weight}</span>
           </div>
-          <div>
-            <span className="text-gray-500">Characters:</span>
-            <span className="ml-2 font-medium">{vectorizedCharacters.length}</span>
+          <div className="preview-info-item">
+            <span className="preview-info-label">Characters:</span>
+            <span className="preview-info-value">{vectorizedCharacters.length}</span>
           </div>
         </div>
       </div>

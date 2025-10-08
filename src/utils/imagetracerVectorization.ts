@@ -4,6 +4,16 @@ import type { VectorizationQuality, VectorizationParams } from '@/types';
 let ImageTracer: any;
 
 /**
+ * Count the number of points/commands in an SVG path
+ * Used to determine which path is likely the main glyph
+ */
+function countPathPoints(path: string): number {
+  // Count SVG path commands (M, L, C, Q, A, Z, etc.)
+  const commandMatches = path.match(/[MLHVCSQTAZ]/gi);
+  return commandMatches ? commandMatches.length : 0;
+}
+
+/**
  * Initialize ImageTracer with proper import handling
  */
 async function initImageTracer() {
@@ -11,20 +21,20 @@ async function initImageTracer() {
     try {
       const imageTracerModule = await import('imagetracer');
       console.log('🔍 ImageTracer module structure:', Object.keys(imageTracerModule));
-      
+
       // ImageTracer is a class that needs to be instantiated
       ImageTracer = (imageTracerModule as any).ImageTracer || (imageTracerModule as any).default?.ImageTracer;
-      
+
       console.log('🔍 ImageTracer class type:', typeof ImageTracer);
-      
+
       if (!ImageTracer || typeof ImageTracer !== 'function') {
         throw new Error('ImageTracer class not found in module exports');
       }
-      
+
       // Test instantiation
       const testTracer = new ImageTracer();
       console.log('🔍 ImageTracer instance methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(testTracer)));
-      
+
       console.log('✅ ImageTracer class initialized successfully');
     } catch (error) {
       console.error('Failed to import ImageTracer:', error);
@@ -65,7 +75,7 @@ export function getImageTracerSettings(quality: VectorizationQuality): ImageTrac
         blurradius: 0,
         blurdelta: 20,
       };
-    
+
     case 'balanced':
       return {
         ltres: 1,
@@ -79,7 +89,7 @@ export function getImageTracerSettings(quality: VectorizationQuality): ImageTrac
         blurradius: 0,
         blurdelta: 15,
       };
-    
+
     case 'high':
       return {
         ltres: 0.5,
@@ -93,7 +103,7 @@ export function getImageTracerSettings(quality: VectorizationQuality): ImageTrac
         blurradius: 1,
         blurdelta: 10,
       };
-    
+
     default:
       return getImageTracerSettings('balanced');
   }
@@ -118,10 +128,10 @@ export async function vectorizeWithTraceTargetPerfect(
   try {
     onProgress?.(30, 'Running vectorization method...');
     const path = await vectorizeWithImageTracerMethod(canvas, params, "trace-target-perfect");
-    
+
     onProgress?.(100, 'Vectorization complete!');
     console.log('✅ Vectorization completed successfully');
-    
+
     return path;
   } catch (error) {
     console.error('❌ Vectorization failed:', error);
@@ -249,10 +259,10 @@ export async function vectorizeWithMultipleMethods(
     });
 
     onProgress?.(100, 'Parallel vectorization complete!');
-    
+
     console.log(`✅ [MULTI-METHOD v1] Generated ${results.length} vectorization variants`);
     return results;
-    
+
   } catch (error) {
     console.error('❌ [MULTI-METHOD v1] Parallel vectorization failed:', error);
     throw new Error(`Multi-method vectorization failed: ${error}`);
@@ -274,23 +284,48 @@ async function vectorizeWithImageTracerMethod(
 
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const options = getOptimizedImageTracerSettings(params.quality, profile);
-  
+
   console.log(`⚙️ [IMAGETRACER ${profile.toUpperCase()}] Options:`, options);
-  
+
   // Initialize ImageTracer with proper import handling
   const ImageTracerClass = await initImageTracer();
   const tracer = new ImageTracerClass();
   const svgString = tracer.imageDataToSVG(imageData, options);
-  
-  // Extract path from SVG
-  const pathMatch = svgString.match(/<path[^>]*d="([^"]*)"[^>]*>/);
-  if (!pathMatch) {
-    throw new Error(`No path found in ImageTracer ${profile} result`);
+
+  // Extract path from SVG - ensure deterministic selection
+  const pathRegex = /<path[^>]*d="([^"]*)"[^>]*>/g;
+  const allPaths: string[] = [];
+  let match;
+
+  while ((match = pathRegex.exec(svgString)) !== null) {
+    allPaths.push(match[1]);
   }
-  
-  let svgPath = pathMatch[1];
+
+  if (allPaths.length === 0) {
+    throw new Error(`No paths found in ImageTracer ${profile} result`);
+  }
+
+  // For font glyphs, select the path with the most points (likely the main glyph)
+  // If tie, select the longest path string
+  let bestPath = allPaths[0];
+  let maxPoints = countPathPoints(bestPath);
+
+  console.log(`🔍 [IMAGETRACER ${profile.toUpperCase()}] Found ${allPaths.length} paths, selecting best one:`);
+  console.log(`🔍 [IMAGETRACER ${profile.toUpperCase()}] Path 0: ${countPathPoints(allPaths[0])} points, length ${allPaths[0].length}`);
+
+  for (let i = 1; i < allPaths.length; i++) {
+    const points = countPathPoints(allPaths[i]);
+    console.log(`🔍 [IMAGETRACER ${profile.toUpperCase()}] Path ${i}: ${points} points, length ${allPaths[i].length}`);
+    if (points > maxPoints || (points === maxPoints && allPaths[i].length > bestPath.length)) {
+      bestPath = allPaths[i];
+      maxPoints = points;
+    }
+  }
+
+  let svgPath = bestPath;
+  console.log(`✅ [IMAGETRACER ${profile.toUpperCase()}] Selected path with ${maxPoints} points`);
   console.log(`📐 [IMAGETRACER ${profile.toUpperCase()}] Generated path length: ${svgPath.length}`);
-  
+
   // Fix background/foreground inversion for methods that need it
   if (profile === 'curve-enhanced') {
     svgPath = fixBackgroundForegroundInversion(svgPath);
@@ -324,7 +359,7 @@ async function vectorizeWithImageTracerMethod(
       // If only 1-2 paths, probably already correct
       console.log(`✅ [PERFECT-HYBRID-PLUS] Paths appear correct, no inversion fix needed`);
     }
-    
+
     // Apply additional intelligent post-processing to eliminate remaining jags
     svgPath = applyIntelligentJaggedSegmentSmoothing(svgPath);
     console.log(`🎯 [PERFECT-HYBRID-PLUS] Applied intelligent jagged segment smoothing`);
@@ -368,7 +403,7 @@ async function vectorizeWithImageTracerMethod(
     console.log(`🏆 [TRACE-TARGET-FINAL] Applying definitive solution - all learnings combined...`);
     const pathCount = (svgPath.match(/M\s/g) || []).length;
     console.log(`🏆 [TRACE-TARGET-FINAL] Found ${pathCount} path(s) - optimized for Q commands and curves`);
-    
+
     // ALWAYS check for inversion - especially with colorsampling=1 which can cause this
     console.log(`🔍 [TRACE-TARGET-FINAL] Analyzing paths for potential inversion...`);
     if (pathCount >= 2) {
@@ -385,7 +420,7 @@ async function vectorizeWithImageTracerMethod(
       console.log(`⚠️ [TRACE-TARGET-FINAL] Only ${pathCount} path(s) found - may need different approach`);
     }
   }
-  
+
   // Normalize to fit 200x200 viewBox
   return normalizeImageTracerPath(svgPath, canvas.width, canvas.height);
 }
@@ -415,45 +450,70 @@ export async function vectorizeWithPotrace(
     // Get professional ImageTracer settings
     const imageTracerOptions = getProfessionalImageTracerSettings(params.quality);
     console.log(`⚙️ [IMAGETRACER PRO v1] Professional options:`, imageTracerOptions);
-    
+
     onProgress?.(30, 'Converting canvas to ImageData...');
-    
+
     // Get image data for ImageTracer
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     console.log(`📊 [IMAGETRACER PRO v1] Processing ${canvas.width}x${canvas.height} image`);
-    
+
     onProgress?.(50, 'Running professional ImageTracer vectorization...');
-    
+
     // Run ImageTracer - the industry standard
     // Initialize ImageTracer with proper import handling
     const ImageTracerClass = await initImageTracer();
     const tracer = new ImageTracerClass();
     const svgString = tracer.imageDataToSVG(imageData, imageTracerOptions);
-    
+
     onProgress?.(80, 'Processing SVG results...');
-    
+
     console.log(`✅ [IMAGETRACER PRO v1] Vectorization completed, SVG length: ${svgString.length}`);
-    
-    // Extract path from SVG string
-    const pathMatch = svgString.match(/<path[^>]*d="([^"]*)"[^>]*>/);
-    if (!pathMatch) {
-      throw new Error('No path found in ImageTracer SVG result');
+
+    // Extract path from SVG string - ensure deterministic selection
+    const pathRegex = /<path[^>]*d="([^"]*)"[^>]*>/g;
+    const allPaths: string[] = [];
+    let match;
+
+    while ((match = pathRegex.exec(svgString)) !== null) {
+      allPaths.push(match[1]);
     }
-    
-    const svgPath = pathMatch[1];
+
+    if (allPaths.length === 0) {
+      throw new Error('No paths found in ImageTracer SVG result');
+    }
+
+    // For font glyphs, select the path with the most points (likely the main glyph)
+    // If tie, select the longest path string
+    let bestPath = allPaths[0];
+    let maxPoints = countPathPoints(bestPath);
+
+    console.log(`🔍 [IMAGETRACER PRO v1] Found ${allPaths.length} paths, selecting best one:`);
+    console.log(`🔍 [IMAGETRACER PRO v1] Path 0: ${countPathPoints(allPaths[0])} points, length ${allPaths[0].length}`);
+
+    for (let i = 1; i < allPaths.length; i++) {
+      const points = countPathPoints(allPaths[i]);
+      console.log(`🔍 [IMAGETRACER PRO v1] Path ${i}: ${points} points, length ${allPaths[i].length}`);
+      if (points > maxPoints || (points === maxPoints && allPaths[i].length > bestPath.length)) {
+        bestPath = allPaths[i];
+        maxPoints = points;
+      }
+    }
+
+    const svgPath = bestPath;
+    console.log(`✅ [IMAGETRACER PRO v1] Selected path with ${maxPoints} points`);
     console.log(`📐 [IMAGETRACER PRO v1] Extracted path length: ${svgPath.length}`);
     console.log(`📐 [IMAGETRACER PRO v1] Path preview: ${svgPath.substring(0, 100)}...`);
-    
+
     onProgress?.(90, 'Normalizing coordinates...');
-    
+
     // Normalize to fit 200x200 viewBox if needed
     const normalizedPath = normalizeImageTracerPath(svgPath, canvas.width, canvas.height);
-    
+
     onProgress?.(100, 'Professional vectorization complete!');
-    
+
     console.log(`✅ [IMAGETRACER PRO v1] Final normalized path: ${normalizedPath.substring(0, 100)}...`);
     return normalizedPath;
-    
+
   } catch (error) {
     console.error('❌ [IMAGETRACER PRO v1] Professional vectorization failed:', error);
     throw new Error(`ImageTracer professional vectorization failed: ${error}`);
@@ -484,43 +544,43 @@ export async function vectorizeWithImageTracer(
 
     // Get image data
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    
+
     onProgress?.(20, 'Converting to binary bitmap...');
-    
+
     // Convert to binary bitmap with adaptive thresholding
     const adaptiveThreshold = calculateAdaptiveThreshold(imageData);
     console.log(`🎯 [ADAPTIVE THRESHOLD v3] Using threshold: ${adaptiveThreshold} (instead of fixed 128)`);
     const bitmap = createBinaryBitmap(imageData, adaptiveThreshold);
-    
+
     // Store bitmap for debugging (global variable)
     (globalThis as any).lastProcessedBitmap = bitmap;
     console.log(`📊 Created ${bitmap.length}x${bitmap[0]?.length || 0} binary bitmap`);
-    
+
     onProgress?.(40, 'Tracing contours with marching squares...');
-    
+
     // Apply marching squares algorithm
     const contours = marchingSquares(bitmap);
     console.log(`🔍 Found ${contours.length} contour(s)`);
-    
+
     if (contours.length === 0) {
       console.warn('⚠️ No contours found, creating default shape');
       return 'M 50 50 L 150 50 L 150 150 L 50 150 Z';
     }
-    
+
     onProgress?.(70, 'Smoothing curves...');
-    
+
     // Convert the largest contour to SVG path
     const largestContour = findLargestContour(contours);
     const svgPath = contourToSVGPath(largestContour, params.quality);
-    
+
     onProgress?.(90, 'Normalizing coordinates...');
-    
+
     // Normalize to fit 200x200 viewBox
     const normalizedPath = normalizeToViewBox(svgPath, canvas.width, canvas.height);
-    
+
     console.log('✅ Marching Squares vectorization completed');
     console.log('📐 Final path:', normalizedPath.substring(0, 100) + '...');
-    
+
     onProgress?.(100, 'Vectorization complete!');
     return normalizedPath;
   } catch (error) {
@@ -534,53 +594,53 @@ export async function vectorizeWithImageTracer(
  */
 function calculateAdaptiveThreshold(imageData: ImageData): number {
   const { width, height, data } = imageData;
-  
+
   // Create histogram of grayscale values
   const histogram = new Array(256).fill(0);
-  
+
   for (let i = 0; i < data.length; i += 4) {
     const grayscale = Math.round((data[i] + data[i + 1] + data[i + 2]) / 3);
     histogram[grayscale]++;
   }
-  
+
   const totalPixels = width * height;
-  
+
   // Otsu's method to find optimal threshold
   let maxVariance = 0;
   let bestThreshold = 128; // fallback
-  
+
   for (let threshold = 1; threshold < 255; threshold++) {
     // Calculate weights
     let w0 = 0, w1 = 0;
     let sum0 = 0, sum1 = 0;
-    
+
     // Background (dark pixels)
     for (let i = 0; i < threshold; i++) {
       w0 += histogram[i];
       sum0 += i * histogram[i];
     }
-    
+
     // Foreground (light pixels)  
     for (let i = threshold; i < 256; i++) {
       w1 += histogram[i];
       sum1 += i * histogram[i];
     }
-    
+
     if (w0 === 0 || w1 === 0) continue;
-    
+
     // Calculate means
     const mean0 = sum0 / w0;
     const mean1 = sum1 / w1;
-    
+
     // Calculate between-class variance
     const betweenClassVariance = (w0 / totalPixels) * (w1 / totalPixels) * Math.pow(mean0 - mean1, 2);
-    
+
     if (betweenClassVariance > maxVariance) {
       maxVariance = betweenClassVariance;
       bestThreshold = threshold;
     }
   }
-  
+
   console.log(`📊 [OTSU v3] Threshold analysis: best=${bestThreshold}, variance=${maxVariance.toFixed(3)}`);
   return bestThreshold;
 }
@@ -609,7 +669,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurradius: 0,     // No blur for maximum detail
         rightangleenhance: true // Enhance corners for letters
       };
-    
+
     case 'smooth':
       // Smooth curves, eliminate jagged edges
       return {
@@ -620,7 +680,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurradius: 1,     // Slight blur to smooth jagged edges
         rightangleenhance: true // Still enhance corners
       };
-    
+
     case 'balanced':
       // Balance between detail and smoothness
       return {
@@ -631,7 +691,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurradius: 0.5,   // Very slight blur
         rightangleenhance: true // Enhance corners
       };
-    
+
     case 'detail-plus':
       // High detail with spike elimination - OPTIMIZED
       return {
@@ -645,7 +705,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         scale: 1,          // Keep original scale
         simplifytolerance: 0.5 // Add path simplification
       };
-    
+
     case 'smooth-fixed':
       // Smooth curves with corrected background/foreground
       return {
@@ -659,7 +719,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         colorsampling: 0,  // Different sampling to fix inversion
         mincolorratio: 0.1 // Adjust color ratio
       };
-    
+
     case 'reference-optimized':
       // Optimized to match trace.svg professional quality
       return {
@@ -678,7 +738,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         scale: 1,          // Keep original scale
         simplifytolerance: 0.3 // Moderate path simplification
       };
-    
+
     case 'curve-enhanced':
       // EXTREME curve forcing to match trace.svg smooth curves
       return {
@@ -700,7 +760,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurdelta: 40,     // Increase blur delta for smoother transitions
         turnpolicy: 'minority' // Policy for curve generation
       };
-    
+
     case 'hole-preserving':
       // SPECIALIZED for letters with holes like A, maintaining separate outer+inner paths
       return {
@@ -721,7 +781,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurdelta: 15,     // Moderate blur delta
         turnpolicy: 'black' // Policy optimized for hole preservation
       };
-    
+
     case 'perfect-hybrid':
       // ULTIMATE method: Combines smooth curves + hole preservation + anti-jagged processing
       return {
@@ -742,7 +802,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurdelta: 25,     // Increased blur delta for smoothness
         turnpolicy: 'black' // Policy for hole preservation
       };
-    
+
     case 'perfect-hybrid-plus':
       // ULTIMATE+ method: Perfect Hybrid + intelligent post-processing for final jagged segment elimination
       return {
@@ -763,7 +823,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurdelta: 30,     // Maximum blur delta for ultimate smoothness
         turnpolicy: 'black' // Policy for hole preservation
       };
-    
+
     case 'perfect-hybrid-v2':
       // ROOT CAUSE SOLUTION: Systematically prevents jagged segments at the source
       return {
@@ -773,16 +833,16 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         qtres: 1.5,        // Higher quad threshold - reduces sharp angle vertices 
         pathomit: 2.5,     // AGGRESSIVE noise filtering - eliminates tiny segments that cause jags
         blurradius: 2.5,   // STRONG blur - smooths input to eliminate pixel-level noise sources
-        
+
         // SCALE OPTIMIZATION (prevent amplification of small artifacts)
         scale: 2,          // Higher scale processing to minimize downscaling artifacts
-        
+
         // COLOR QUANTIZATION STABILITY (minimize intermediate artifacts)
         colorsampling: 1,  // Standard sampling to avoid quantization noise
         numberofcolors: 2, // Binary only - eliminates 3-color intermediate artifacts
         mincolorratio: 0.02, // Higher threshold - filters micro-holes that cause jags
         colorquantcycles: 3, // Lower cycles - prevents over-quantization artifacts
-        
+
         // CURVE ENHANCEMENT (bias toward smooth curves)
         rightangleenhance: false, // Disable - prevents artificial sharp corners
         strokewidth: 0,    // Filled paths for clean edges
@@ -790,7 +850,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurdelta: 45,     // MAXIMUM blur delta - ultimate smoothness
         turnpolicy: 'majority' // Favor majority direction for smoother turns
       };
-    
+
     case 'trace-target':
       // SIMPLIFIED FOCUS: Direct target for trace.svg quality without overcomplication
       return {
@@ -800,13 +860,13 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         qtres: 0.3,        // Low quad threshold - force curves over lines
         pathomit: 8,       // HIGH pathomit - eliminate ALL noise that causes jags
         blurradius: 3.0,   // Strong blur - smooth input completely
-        
+
         // HOLE PRESERVATION (working from Perfect Hybrid)
         colorsampling: 2,  // Careful color analysis
         numberofcolors: 3, // Allow outer + inner paths
         mincolorratio: 0.01, // Include small holes
         colorquantcycles: 5, // Moderate cycles - balance smoothness vs stability
-        
+
         // CURVE BIAS (match trace.svg C command pattern)
         rightangleenhance: false, // Disable sharp corners
         strokewidth: 0,    // Filled paths
@@ -814,7 +874,7 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         blurdelta: 20,     // Moderate blur delta
         turnpolicy: 'black' // Hole-friendly policy
       };
-    
+
     case 'trace-target-perfect':
       // TINY ADJUSTMENT: Just enough to eliminate the 2 remaining spikes
       return {
@@ -824,21 +884,21 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         qtres: 0.25,       // Slightly lower quad threshold
         pathomit: 10,      // Slightly higher pathomit - eliminate micro-segments
         blurradius: 3.2,   // Slightly stronger blur
-        
+
         // HOLE PRESERVATION (proven working from Trace Target)
-        colorsampling: 2,  
-        numberofcolors: 3, 
-        mincolorratio: 0.01, 
-        colorquantcycles: 5, 
-        
+        colorsampling: 2,
+        numberofcolors: 3,
+        mincolorratio: 0.01,
+        colorquantcycles: 5,
+
         // MINIMAL ADJUSTMENT PARAMETERS
-        rightangleenhance: false, 
-        strokewidth: 0,    
+        rightangleenhance: false,
+        strokewidth: 0,
         simplifytolerance: 1.0, // Slightly higher simplification
         blurdelta: 22,     // Slightly stronger blur delta
         turnpolicy: 'black'
       };
-    
+
     case 'trace-target-final':
       // FINAL SOLUTION: Combining all learnings for definitive spike elimination
       return {
@@ -848,22 +908,22 @@ function getOptimizedImageTracerSettings(quality: VectorizationQuality, profile:
         qtres: 0.2,        // Low quad threshold - enable Q command generation
         pathomit: 12,      // Strong pathomit - eliminate micro-segments
         blurradius: 3.8,   // Strong blur - works with preprocessing
-        
+
         // HOLE PRESERVATION + CURVE GENERATION (best of both worlds)
         colorsampling: 1,  // Simplified sampling for cleaner curves
         numberofcolors: 3, // Allow hole detection
         mincolorratio: 0.008, // Balanced hole threshold
         colorquantcycles: 6,  // Moderate cycles for stability
-        
+
         // FINAL CURVE OPTIMIZATION
         rightangleenhance: false, // No sharp corners
-        strokewidth: 0,    
+        strokewidth: 0,
         simplifytolerance: 0.9, // Moderate simplification - preserve quality
         blurdelta: 25,     // Strong blur delta
         turnpolicy: 'white', // Alternative policy for curve generation
         scale: 1.2         // Slight scale boost
       };
-    
+
     default:
       return getOptimizedImageTracerSettings(quality, 'balanced');
   }
@@ -927,30 +987,30 @@ function getProfessionalImageTracerSettings(quality: VectorizationQuality) {
  */
 function applyIntelligentJaggedSegmentSmoothing(svgPath: string): string {
   console.log(`🔧 [JAG-SMOOTHER] Starting intelligent jagged segment analysis...`);
-  
+
   // Split paths to handle multiple segments (outer + inner)
   const pathSegments = svgPath.split(/(?=M)/).filter(segment => segment.trim().length > 0);
-  
+
   const smoothedSegments = pathSegments.map((segment, index) => {
     console.log(`🔧 [JAG-SMOOTHER] Processing path segment ${index + 1}/${pathSegments.length}`);
-    
+
     // Parse coordinates and commands
     const coords = extractPathCoordinates(segment);
     if (coords.length < 3) return segment;
-    
+
     // Detect jagged segments by analyzing angle changes
     const jaggedPoints = detectJaggedPoints(coords);
     console.log(`🔧 [JAG-SMOOTHER] Found ${jaggedPoints.length} potentially jagged points`);
-    
+
     if (jaggedPoints.length === 0) return segment;
-    
+
     // Apply selective smoothing to jagged points only
     const smoothedCoords = applySelectiveSmoothing(coords, jaggedPoints);
-    
+
     // Reconstruct the path with smoothed coordinates
     return reconstructSmoothPath(smoothedCoords);
   });
-  
+
   const result = smoothedSegments.join(' ');
   console.log(`✅ [JAG-SMOOTHER] Intelligent smoothing complete`);
   return result;
@@ -959,73 +1019,73 @@ function applyIntelligentJaggedSegmentSmoothing(svgPath: string): string {
 /**
  * Detect potentially jagged points by analyzing angle changes
  */
-function detectJaggedPoints(coords: Array<{x: number, y: number}>): number[] {
+function detectJaggedPoints(coords: Array<{ x: number, y: number }>): number[] {
   const jaggedIndices: number[] = [];
   const jaggedThreshold = 45; // degrees - angles sharper than this are considered jagged
-  
+
   for (let i = 1; i < coords.length - 1; i++) {
     const prev = coords[i - 1];
     const curr = coords[i];
     const next = coords[i + 1];
-    
+
     // Calculate angle at current point
     const angle1 = Math.atan2(curr.y - prev.y, curr.x - prev.x);
     const angle2 = Math.atan2(next.y - curr.y, next.x - curr.x);
-    
+
     let angleDiff = Math.abs(angle2 - angle1) * (180 / Math.PI);
     if (angleDiff > 180) angleDiff = 360 - angleDiff;
-    
+
     // If angle change is very sharp, it's likely a jagged segment
     if (angleDiff > jaggedThreshold && angleDiff < 135) { // Avoid smoothing intentional corners
       jaggedIndices.push(i);
     }
   }
-  
+
   return jaggedIndices;
 }
 
 /**
  * Apply selective smoothing only to jagged points
  */
-function applySelectiveSmoothing(coords: Array<{x: number, y: number}>, jaggedIndices: number[]): Array<{x: number, y: number}> {
+function applySelectiveSmoothing(coords: Array<{ x: number, y: number }>, jaggedIndices: number[]): Array<{ x: number, y: number }> {
   const smoothed = [...coords];
   const smoothingRadius = 1; // How many neighboring points to consider
-  
+
   jaggedIndices.forEach(index => {
     const start = Math.max(0, index - smoothingRadius);
     const end = Math.min(coords.length - 1, index + smoothingRadius);
-    
+
     // Calculate weighted average for smoother transition
     let sumX = 0, sumY = 0, weight = 0;
-    
+
     for (let i = start; i <= end; i++) {
       const w = i === index ? 0.5 : 1.0; // Less weight for jagged point itself
       sumX += coords[i].x * w;
       sumY += coords[i].y * w;
       weight += w;
     }
-    
+
     smoothed[index] = {
       x: sumX / weight,
       y: sumY / weight
     };
   });
-  
+
   return smoothed;
 }
 
 /**
  * Reconstruct SVG path with smoothed coordinates
  */
-function reconstructSmoothPath(coords: Array<{x: number, y: number}>): string {
+function reconstructSmoothPath(coords: Array<{ x: number, y: number }>): string {
   if (coords.length === 0) return '';
-  
+
   let path = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
-  
+
   for (let i = 1; i < coords.length; i++) {
     path += ` L ${coords[i].x.toFixed(1)} ${coords[i].y.toFixed(1)}`;
   }
-  
+
   return path + ' Z';
 }
 
@@ -1037,21 +1097,21 @@ function fixBackgroundForegroundInversion(svgPath: string): string {
   // 1. Background path (large rectangle covering entire canvas)
   // 2. Letter outer path (main A shape)
   // 3. Letter inner path (triangular hole)
-  
+
   // Split into individual path segments (separated by M commands)
   const pathSegments = svgPath.split(/(?=M)/).filter(segment => segment.trim().length > 0);
-  
+
   if (pathSegments.length < 2) {
     console.log(`⚠️ [INVERSION FIX] Only one path segment found, cannot fix inversion`);
     return svgPath;
   }
-  
+
   // Analyze each path to identify background vs letter paths
   const analyzedPaths = pathSegments.map((segment, index) => {
     const coords = extractPathCoordinates(segment);
     const area = calculatePathArea(coords);
     const isLargeRectangle = isBackgroundRectangle(segment);
-    
+
     return {
       segment,
       index,
@@ -1060,22 +1120,22 @@ function fixBackgroundForegroundInversion(svgPath: string): string {
       coordCount: coords.length
     };
   });
-  
+
   // Sort by area (largest first)
   analyzedPaths.sort((a, b) => b.area - a.area);
-  
+
   console.log(`🔄 [INVERSION FIX] Analyzed ${pathSegments.length} paths:`);
   analyzedPaths.forEach((path, i) => {
     console.log(`   Path ${i}: area=${path.area.toFixed(0)}, coords=${path.coordCount}, isRect=${path.isLargeRectangle}`);
   });
-  
+
   // Remove background (largest rectangular path)
   const backgroundPath = analyzedPaths.find(p => p.isLargeRectangle) || analyzedPaths[0];
   const letterPaths = analyzedPaths.filter(p => p !== backgroundPath);
-  
+
   console.log(`🔄 [INVERSION FIX] Removing background path (area: ${backgroundPath.area.toFixed(0)})`);
   console.log(`🔄 [INVERSION FIX] Keeping ${letterPaths.length} letter path(s) for A outer + inner hole`);
-  
+
   // Reconstruct path with letter paths (both outer shape and inner hole)
   return letterPaths.map(p => p.segment).join(' ');
 }
@@ -1083,10 +1143,10 @@ function fixBackgroundForegroundInversion(svgPath: string): string {
 /**
  * Extract coordinates from a path segment for analysis
  */
-function extractPathCoordinates(pathSegment: string): Array<{x: number, y: number}> {
-  const coords: Array<{x: number, y: number}> = [];
+function extractPathCoordinates(pathSegment: string): Array<{ x: number, y: number }> {
+  const coords: Array<{ x: number, y: number }> = [];
   const numbers = pathSegment.match(/-?\d+\.?\d*/g) || [];
-  
+
   for (let i = 0; i < numbers.length; i += 2) {
     const x = parseFloat(numbers[i]);
     const y = parseFloat(numbers[i + 1]);
@@ -1094,23 +1154,23 @@ function extractPathCoordinates(pathSegment: string): Array<{x: number, y: numbe
       coords.push({ x, y });
     }
   }
-  
+
   return coords;
 }
 
 /**
  * Calculate approximate area of a path using shoelace formula
  */
-function calculatePathArea(coords: Array<{x: number, y: number}>): number {
+function calculatePathArea(coords: Array<{ x: number, y: number }>): number {
   if (coords.length < 3) return 0;
-  
+
   let area = 0;
   for (let i = 0; i < coords.length; i++) {
     const j = (i + 1) % coords.length;
     area += coords[i].x * coords[j].y;
     area -= coords[j].x * coords[i].y;
   }
-  
+
   return Math.abs(area) / 2;
 }
 
@@ -1119,9 +1179,9 @@ function calculatePathArea(coords: Array<{x: number, y: number}>): number {
  */
 function isBackgroundRectangle(pathSegment: string): boolean {
   // Background rectangles typically start at (0,0) or (0.5,0) and cover full canvas
-  return /^M\s*0?\.?5?\s+0/.test(pathSegment.trim()) && 
-         pathSegment.includes('400') && 
-         pathSegment.includes('Z');
+  return /^M\s*0?\.?5?\s+0/.test(pathSegment.trim()) &&
+    pathSegment.includes('400') &&
+    pathSegment.includes('Z');
 }
 
 /**
@@ -1130,24 +1190,24 @@ function isBackgroundRectangle(pathSegment: string): boolean {
 function normalizeImageTracerPath(svgPath: string, originalWidth: number, originalHeight: number): string {
   // ImageTracer produces paths in original image coordinates (0-400)
   // We need to scale them to fit our 200x200 viewBox standard with padding
-  
+
   console.log(`📐 [IMAGETRACER PRO v1] Input path from ${originalWidth}x${originalHeight} image`);
-  
+
   const viewBoxSize = 200;
   const padding = 20;
   const contentSize = viewBoxSize - 2 * padding; // 160
-  
+
   // Calculate scale factor to fit content area
   const scale = Math.min(contentSize / originalWidth, contentSize / originalHeight);
-  
+
   // Calculate centering offset
   const scaledWidth = originalWidth * scale;
   const scaledHeight = originalHeight * scale;
   const offsetX = padding + (contentSize - scaledWidth) / 2;
   const offsetY = padding + (contentSize - scaledHeight) / 2;
-  
+
   console.log(`📐 [IMAGETRACER PRO v1] Normalization: scale=${scale.toFixed(3)}, offset=(${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
-  
+
   // Transform all coordinates in the path
   const normalizedPath = svgPath.replace(/([ML])\s*([0-9.]+)\s+([0-9.]+)/g, (_match, command, x, y) => {
     const newX = parseFloat(x) * scale + offsetX;
@@ -1164,7 +1224,7 @@ function normalizeImageTracerPath(svgPath: string, originalWidth: number, origin
     const newY = parseFloat(y) * scale + offsetY;
     return `Q ${newCx.toFixed(1)} ${newCy.toFixed(1)} ${newX.toFixed(1)} ${newY.toFixed(1)}`;
   });
-  
+
   console.log(`📐 [IMAGETRACER PRO v1] Normalized path preview: ${normalizedPath.substring(0, 100)}...`);
   return normalizedPath;
 }
@@ -1175,14 +1235,14 @@ function normalizeImageTracerPath(svgPath: string, originalWidth: number, origin
 function createBinaryBitmap(imageData: ImageData, threshold: number): number[][] {
   const { width, height, data } = imageData;
   const bitmap: number[][] = [];
-  
+
   // Add padding border for marching squares edge cases
   const paddedWidth = width + 2;
   const paddedHeight = height + 2;
-  
+
   let foregroundPixels = 0;
   let backgroundPixels = 0;
-  
+
   for (let y = 0; y < paddedHeight; y++) {
     bitmap[y] = [];
     for (let x = 0; x < paddedWidth; x++) {
@@ -1199,7 +1259,7 @@ function createBinaryBitmap(imageData: ImageData, threshold: number): number[][]
         // Correct: Dark pixels (< threshold) = foreground (1), Light pixels (>= threshold) = background (0)
         const binaryValue = grayscale < threshold ? 1 : 0;
         bitmap[y][x] = binaryValue;
-        
+
         if (binaryValue === 1) {
           foregroundPixels++;
         } else {
@@ -1208,9 +1268,9 @@ function createBinaryBitmap(imageData: ImageData, threshold: number): number[][]
       }
     }
   }
-  
+
   console.log(`📊 Binary bitmap stats: ${foregroundPixels} foreground, ${backgroundPixels} background pixels (${(foregroundPixels / (foregroundPixels + backgroundPixels) * 100).toFixed(1)}% coverage)`);
-  
+
   // Log a better sample of the bitmap for debugging
   if (bitmap.length > 10 && bitmap[0].length > 10) {
     console.log('🔍 Bitmap sample (center 10x10):');
@@ -1218,13 +1278,13 @@ function createBinaryBitmap(imageData: ImageData, threshold: number): number[][]
     const centerX = Math.floor(bitmap[0].length / 2);
     const startY = Math.max(0, centerY - 5);
     const startX = Math.max(0, centerX - 5);
-    
+
     for (let y = startY; y < Math.min(startY + 10, bitmap.length); y++) {
       const row = bitmap[y].slice(startX, startX + 10).join(' ');
       console.log(`Row ${y}: ${row}`);
     }
   }
-  
+
   return bitmap;
 }
 
@@ -1256,12 +1316,12 @@ const MARCHING_SQUARES_LOOKUP: Record<number, Array<[number, number][]>> = {
 function marchingSquares(bitmap: number[][]): Array<Array<{ x: number; y: number }>> {
   const height = bitmap.length;
   const width = bitmap[0]?.length || 0;
-  
+
   console.log('🔍 Applying marching squares to', width, 'x', height, 'bitmap');
-  
+
   // Generate line segments from marching squares
   const segments: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> = [];
-  
+
   // Scan each 2x2 cell
   for (let y = 0; y < height - 1; y++) {
     for (let x = 0; x < width - 1; x++) {
@@ -1270,13 +1330,13 @@ function marchingSquares(bitmap: number[][]): Array<Array<{ x: number; y: number
       const tr = bitmap[y][x + 1]; // top-right  
       const bl = bitmap[y + 1][x]; // bottom-left
       const br = bitmap[y + 1][x + 1]; // bottom-right
-      
+
       // Calculate marching squares case (0-15)
       const caseValue = tl * 8 + tr * 4 + br * 2 + bl * 1;
-      
+
       // Get line segments for this case
       const segmentTemplates = MARCHING_SQUARES_LOOKUP[caseValue] || [];
-      
+
       // Convert segment templates to world coordinates
       for (const segmentTemplate of segmentTemplates) {
         if (segmentTemplate.length >= 2) {
@@ -1289,17 +1349,17 @@ function marchingSquares(bitmap: number[][]): Array<Array<{ x: number; y: number
       }
     }
   }
-  
+
   console.log(`📊 Generated ${segments.length} line segments`);
-  
+
   if (segments.length === 0) {
     return [];
   }
-  
+
   // Follow contours by connecting segments
   const contours = followContours(segments);
   console.log(`🔗 Connected into ${contours.length} contour(s)`);
-  
+
   // If no proper contours found, use hull-based fallback
   if (contours.length === 0 && segments.length > 0) {
     console.log('🔄 No connected contours found, using convex hull fallback');
@@ -1309,7 +1369,7 @@ function marchingSquares(bitmap: number[][]): Array<Array<{ x: number; y: number
       contours.push(hull);
     }
   }
-  
+
   return contours;
 }
 
@@ -1319,31 +1379,31 @@ function marchingSquares(bitmap: number[][]): Array<Array<{ x: number; y: number
 function followContours(segments: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>): Array<Array<{ x: number; y: number }>> {
   const contours: Array<Array<{ x: number; y: number }>> = [];
   const usedSegments = new Set<number>();
-  
+
   for (let i = 0; i < segments.length; i++) {
     if (usedSegments.has(i)) continue;
-    
+
     const contour: Array<{ x: number; y: number }> = [];
     let currentSegment = segments[i];
     usedSegments.add(i);
-    
+
     // Start the contour
     contour.push(currentSegment.start);
     contour.push(currentSegment.end);
-    
+
     let lastPoint = currentSegment.end;
     let foundConnection = true;
-    
+
     // Follow the contour by finding connected segments
     while (foundConnection && contour.length < 1000) { // Safety limit
       foundConnection = false;
-      
+
       for (let j = 0; j < segments.length; j++) {
         if (usedSegments.has(j)) continue;
-        
+
         const segment = segments[j];
         const tolerance = 0.1; // Small tolerance for floating point comparisons
-        
+
         // Check if this segment connects to our current endpoint
         if (pointsEqual(lastPoint, segment.start, tolerance)) {
           contour.push(segment.end);
@@ -1360,7 +1420,7 @@ function followContours(segments: Array<{ start: { x: number; y: number }; end: 
         }
       }
     }
-    
+
     // Only keep contours with a reasonable number of points
     if (contour.length >= 3) {
       contours.push(contour);
@@ -1369,7 +1429,7 @@ function followContours(segments: Array<{ start: { x: number; y: number }; end: 
       console.log(`🚫 Rejected small contour with ${contour.length} points`);
     }
   }
-  
+
   return contours;
 }
 
@@ -1387,31 +1447,31 @@ function findLargestContour(contours: Array<Array<{ x: number; y: number }>>): A
   if (contours.length === 0) {
     return [];
   }
-  
+
   // Sort contours by size and select significant ones
   const sortedContours = contours
     .filter(contour => contour.length > 10) // Filter out tiny noise contours
     .sort((a, b) => b.length - a.length);
-  
+
   if (sortedContours.length === 0) {
     return contours[0] || [];
   }
-  
+
   // For letters like "A", we want both outer shape and inner holes
   // Take the largest contour, plus any others that are at least 10% of its size
   const largestContour = sortedContours[0];
   const significantContours = [largestContour];
   const minSize = largestContour.length * 0.1;
-  
+
   for (let i = 1; i < Math.min(3, sortedContours.length); i++) {
     const contour = sortedContours[i];
     if (contour.length >= minSize) {
       significantContours.push(contour);
     }
   }
-  
+
   console.log(`🎯 Selected ${significantContours.length} significant contour(s): ${significantContours.map(c => c.length).join(', ')} points`);
-  
+
   // Combine all significant contours into one
   return combineContours(significantContours);
 }
@@ -1423,24 +1483,24 @@ function generateSmoothCurvePath(points: Array<{ x: number; y: number }>): strin
   if (points.length < 2) {
     return 'M 50 50 L 150 50 L 150 150 L 50 150 Z';
   }
-  
+
   if (points.length === 2) {
     return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)} L ${points[1].x.toFixed(1)} ${points[1].y.toFixed(1)} Z`;
   }
-  
+
   // Start the path
   let path = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-  
+
   // Use cubic Bézier curves for smooth interpolation
   for (let i = 1; i < points.length - 1; i++) {
     const prev = points[i - 1];
     const curr = points[i];
     const next = points[i + 1];
-    
+
     // Calculate control points for smooth curves
     const cp1 = calculateControlPoint(prev, curr, next, 0.3, false);
     const cp2 = calculateControlPoint(prev, curr, next, 0.3, true);
-    
+
     if (i === 1) {
       // First curve segment
       path += ` C ${cp1.x.toFixed(1)} ${cp1.y.toFixed(1)} ${cp2.x.toFixed(1)} ${cp2.y.toFixed(1)} ${curr.x.toFixed(1)} ${curr.y.toFixed(1)}`;
@@ -1449,14 +1509,14 @@ function generateSmoothCurvePath(points: Array<{ x: number; y: number }>): strin
       path += ` S ${cp2.x.toFixed(1)} ${cp2.y.toFixed(1)} ${curr.x.toFixed(1)} ${curr.y.toFixed(1)}`;
     }
   }
-  
+
   // Add final point
   const lastPoint = points[points.length - 1];
   path += ` L ${lastPoint.x.toFixed(1)} ${lastPoint.y.toFixed(1)}`;
-  
+
   // Close the path
-    path += ' Z';
-  
+  path += ' Z';
+
   return path;
 }
 
@@ -1473,10 +1533,10 @@ function calculateControlPoint(
   // Calculate the direction vector
   const dx = next.x - prev.x;
   const dy = next.y - prev.y;
-  
+
   // Apply tension and direction
   const factor = reverse ? -tension : tension;
-  
+
   return {
     x: curr.x + dx * factor,
     y: curr.y + dy * factor
@@ -1489,15 +1549,15 @@ function calculateControlPoint(
 function combineContours(contours: Array<Array<{ x: number; y: number }>>): Array<{ x: number; y: number }> {
   if (contours.length === 0) return [];
   if (contours.length === 1) return contours[0];
-  
+
   // For now, just concatenate all contours
   // In a more sophisticated implementation, we'd handle holes and sub-paths
   const combined: Array<{ x: number; y: number }> = [];
-  
+
   for (const contour of contours) {
     combined.push(...contour);
   }
-  
+
   return combined;
 }
 
@@ -1508,21 +1568,21 @@ function contourToSVGPath(contour: Array<{ x: number; y: number }>, _quality: Ve
   if (contour.length === 0) {
     return 'M 50 50 L 150 50 L 150 150 L 50 150 Z';
   }
-  
+
   console.log(`🎨 [NEW CODE v2] Converting ${contour.length} points to SVG path (HIGH QUALITY)`);
-  
+
   // High quality vectorization with minimal simplification
   const simplificationThreshold = 0.2; // Very conservative for high quality
   const simplifiedContour = simplifyContour(contour, simplificationThreshold);
   console.log(`📉 [NEW CODE v2] Simplified to ${simplifiedContour.length} points (threshold: ${simplificationThreshold})`);
-  
+
   if (simplifiedContour.length === 0) {
     return 'M 50 50 L 150 50 L 150 150 L 50 150 Z';
   }
-  
+
   // Generate smooth curves instead of jagged lines
   const path = generateSmoothCurvePath(simplifiedContour);
-  
+
   return path;
 }
 
@@ -1533,17 +1593,17 @@ function simplifyContour(contour: Array<{ x: number; y: number }>, threshold: nu
   if (contour.length <= 3) {
     return contour;
   }
-  
+
   // Use the threshold directly (already scaled appropriately)
   const simplified = douglasPeucker(contour, threshold);
-  
+
   // Safety check: don't over-simplify
   const reductionRatio = simplified.length / contour.length;
   if (simplified.length < 8 && reductionRatio < 0.1) {
     console.log(`⚠️ Over-simplification detected (${simplified.length}/${contour.length} = ${(reductionRatio * 100).toFixed(1)}%), using less aggressive threshold`);
     return douglasPeucker(contour, threshold * 0.3);
   }
-  
+
   return simplified;
 }
 
@@ -1554,14 +1614,14 @@ function douglasPeucker(points: Array<{ x: number; y: number }>, tolerance: numb
   if (points.length <= 2) {
     return points;
   }
-  
+
   // Find the point with maximum distance from the line between first and last
   let maxDistance = 0;
   let maxIndex = 0;
-  
+
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
-  
+
   for (let i = 1; i < points.length - 1; i++) {
     const distance = perpendicularDistance(points[i], firstPoint, lastPoint);
     if (distance > maxDistance) {
@@ -1569,12 +1629,12 @@ function douglasPeucker(points: Array<{ x: number; y: number }>, tolerance: numb
       maxIndex = i;
     }
   }
-  
+
   // If max distance is greater than tolerance, recursively simplify
   if (maxDistance > tolerance) {
     const leftPoints = douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
     const rightPoints = douglasPeucker(points.slice(maxIndex), tolerance);
-    
+
     // Combine results (remove duplicate point at the junction)
     return leftPoints.slice(0, -1).concat(rightPoints);
   } else {
@@ -1589,18 +1649,18 @@ function douglasPeucker(points: Array<{ x: number; y: number }>, tolerance: numb
 function perpendicularDistance(point: { x: number; y: number }, lineStart: { x: number; y: number }, lineEnd: { x: number; y: number }): number {
   const dx = lineEnd.x - lineStart.x;
   const dy = lineEnd.y - lineStart.y;
-  
+
   if (dx === 0 && dy === 0) {
     // Line is actually a point
     return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
   }
-  
+
   const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy);
   const clampedT = Math.max(0, Math.min(1, t));
-  
+
   const projectionX = lineStart.x + clampedT * dx;
   const projectionY = lineStart.y + clampedT * dy;
-  
+
   return Math.sqrt((point.x - projectionX) ** 2 + (point.y - projectionY) ** 2);
 }
 
@@ -1611,41 +1671,41 @@ function normalizeToViewBox(pathData: string, _originalWidth: number, _originalH
   if (!pathData || pathData.length === 0) {
     return 'M 50 50 L 150 50 L 150 150 L 50 150 Z';
   }
-  
+
   console.log('📏 Normalizing path to 200x200 viewBox...');
-  
+
   // Extract coordinates
   const coords = pathData.match(/-?\d+\.?\d*/g);
   if (!coords || coords.length === 0) {
     return 'M 50 50 L 150 50 L 150 150 L 50 150 Z';
   }
-  
+
   const numbers = coords.map(Number);
-  
+
   // Find bounds
   const xCoords = numbers.filter((_, i) => i % 2 === 0);
   const yCoords = numbers.filter((_, i) => i % 2 === 1);
-  
+
   const minX = Math.min(...xCoords);
   const maxX = Math.max(...xCoords);
   const minY = Math.min(...yCoords);
   const maxY = Math.max(...yCoords);
-  
+
   const sourceWidth = maxX - minX || 1;
   const sourceHeight = maxY - minY || 1;
-  
+
   // Target: 160x160 content area (20px padding on each side)
   const targetSize = 160;
   const scale = Math.min(targetSize / sourceWidth, targetSize / sourceHeight);
-  
+
   // Center the scaled content
   const scaledWidth = sourceWidth * scale;
   const scaledHeight = sourceHeight * scale;
   const offsetX = (200 - scaledWidth) / 2;
   const offsetY = (200 - scaledHeight) / 2;
-  
+
   console.log(`📐 Scale: ${scale.toFixed(3)}, Offset: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
-  
+
   // Transform coordinates
   let coordIndex = 0;
   const normalizedPath = pathData.replace(/-?\d+\.?\d*/g, (match) => {
@@ -1662,7 +1722,7 @@ function normalizeToViewBox(pathData: string, _originalWidth: number, _originalH
       return normalized.toFixed(1);
     }
   });
-  
+
   console.log('✅ Normalized path:', normalizedPath.substring(0, 80) + '...');
   return normalizedPath;
 }
@@ -1672,14 +1732,14 @@ function normalizeToViewBox(pathData: string, _originalWidth: number, _originalH
  */
 function convexHull(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
   if (points.length < 3) return points;
-  
+
   // Remove duplicates
-  const unique = points.filter((point, index, arr) => 
+  const unique = points.filter((point, index, arr) =>
     index === arr.findIndex(p => Math.abs(p.x - point.x) < 0.1 && Math.abs(p.y - point.y) < 0.1)
   );
-  
+
   if (unique.length < 3) return unique;
-  
+
   // Find bottom-most point (or left-most if tie)
   let start = unique[0];
   for (const point of unique) {
@@ -1687,7 +1747,7 @@ function convexHull(points: Array<{ x: number; y: number }>): Array<{ x: number;
       start = point;
     }
   }
-  
+
   // Sort points by polar angle with respect to start point
   const sorted = unique
     .filter(p => p !== start)
@@ -1696,7 +1756,7 @@ function convexHull(points: Array<{ x: number; y: number }>): Array<{ x: number;
       const angleB = Math.atan2(b.y - start.y, b.x - start.x);
       return angleA - angleB;
     });
-  
+
   // Build convex hull
   const hull = [start];
   for (const point of sorted) {
@@ -1710,7 +1770,7 @@ function convexHull(points: Array<{ x: number; y: number }>): Array<{ x: number;
     }
     hull.push(point);
   }
-  
+
   return hull;
 }
 
@@ -1724,13 +1784,13 @@ export function parseSVGPath(pathString: string): Array<{ command: string; value
     console.warn('⚠️ Invalid path string provided to parseSVGPath');
     return [];
   }
-  
+
   console.log('📝 Parsing SVG path:', pathString.substring(0, 100) + '...');
-  
+
   try {
     // Split path into commands
     const commands = pathString.split(/(?=[MLHVCSQTAZ])/i).filter(cmd => cmd.trim());
-    
+
     return commands.map(cmd => {
       const trimmed = cmd.trim();
       const command = trimmed[0];
@@ -1738,7 +1798,7 @@ export function parseSVGPath(pathString: string): Array<{ command: string; value
         .split(/[\s,]+/)
         .filter(v => v && !isNaN(Number(v)))
         .map(Number);
-      
+
       return { command, values };
     });
   } catch (error) {
@@ -1752,19 +1812,19 @@ export function parseSVGPath(pathString: string): Array<{ command: string; value
  */
 export function calculateBounds(pathString: string): { x: number; y: number; width: number; height: number } {
   const commands = parseSVGPath(pathString);
-  
+
   if (commands.length === 0) {
     return { x: 0, y: 0, width: 100, height: 100 };
   }
-  
+
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  
+
   let currentX = 0;
   let currentY = 0;
-  
+
   for (const { command, values } of commands) {
     switch (command.toUpperCase()) {
       case 'M':
@@ -1778,7 +1838,7 @@ export function calculateBounds(pathString: string): { x: number; y: number; wid
           maxY = Math.max(maxY, currentY);
         }
         break;
-      
+
       case 'H':
         if (values.length >= 1) {
           currentX = values[0];
@@ -1786,7 +1846,7 @@ export function calculateBounds(pathString: string): { x: number; y: number; wid
           maxX = Math.max(maxX, currentX);
         }
         break;
-      
+
       case 'V':
         if (values.length >= 1) {
           currentY = values[0];
@@ -1794,7 +1854,7 @@ export function calculateBounds(pathString: string): { x: number; y: number; wid
           maxY = Math.max(maxY, currentY);
         }
         break;
-      
+
       case 'C':
         if (values.length >= 6) {
           for (let i = 0; i < 6; i += 2) {
@@ -1809,12 +1869,12 @@ export function calculateBounds(pathString: string): { x: number; y: number; wid
         break;
     }
   }
-  
+
   // Fallback for invalid bounds
   if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
     return { x: 0, y: 0, width: 100, height: 100 };
   }
-  
+
   return {
     x: minX,
     y: minY,
@@ -1828,31 +1888,31 @@ export function calculateBounds(pathString: string): { x: number; y: number; wid
  */
 export async function validateImageTracer(): Promise<boolean> {
   console.log('🔍 Validating ImageTracer installation...');
-  
+
   try {
     // Create a simple test canvas with a black square on white background
     const testCanvas = document.createElement('canvas');
     testCanvas.width = 50;
     testCanvas.height = 50;
-    
+
     const ctx = testCanvas.getContext('2d')!;
-    
+
     // White background
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, 50, 50);
-    
+
     // Black square in the center
     ctx.fillStyle = 'black';
     ctx.fillRect(15, 15, 20, 20);
-    
+
     const result = await vectorizeWithImageTracer(testCanvas, { quality: 'high' });
-    
+
     const isValid = typeof result === 'string' && result.length > 0;
     console.log(isValid ? '✅ ImageTracer validation successful' : '❌ ImageTracer validation failed');
     if (isValid) {
       console.log('📊 Sample result preview:', result.substring(0, 100) + '...');
     }
-    
+
     return isValid;
   } catch (error) {
     console.error('❌ ImageTracer validation error:', error);

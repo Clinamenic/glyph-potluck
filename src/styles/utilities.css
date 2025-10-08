@@ -1,0 +1,17 @@
+/* Utility Classes - Minimal set for essential functionality only */
+
+/* Essential layout utilities that can't be easily replaced with component classes */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.text-center { text-align: center; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.min-h-screen { min-height: 100vh; }
+
+/* Responsive utilities */
+@media (min-width: 640px) {
+  .sm\:flex-row { flex-direction: row; }
+}

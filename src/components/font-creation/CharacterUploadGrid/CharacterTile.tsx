@@ -11,6 +11,7 @@ interface CharacterTileProps {
   size?: 'small' | 'medium' | 'large';
 }
 
+
 export const CharacterTile: React.FC<CharacterTileProps> = ({
   character,
   characterData,
@@ -20,6 +21,9 @@ export const CharacterTile: React.FC<CharacterTileProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // Use a fixed viewBox that works for most glyphs
+  const svgViewBox = '0 0 200 200';
 
   const handleFileSelect = (file: File) => {
     if (file && file.type.startsWith('image/')) {
@@ -39,7 +43,7 @@ export const CharacterTile: React.FC<CharacterTileProps> = ({
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragOver(false);
-    
+
     const file = event.dataTransfer.files[0];
     if (file) {
       handleFileSelect(file);
@@ -66,7 +70,7 @@ export const CharacterTile: React.FC<CharacterTileProps> = ({
 
   const getStatusClass = () => {
     if (!characterData) return '';
-    
+
     switch (characterData.status) {
       case 'uploaded':
         return 'uploaded';
@@ -85,19 +89,46 @@ export const CharacterTile: React.FC<CharacterTileProps> = ({
 
   const getStatusIndicator = () => {
     if (!characterData) return null;
-    
+
     const baseClasses = "character-status-indicator";
-    
+
     switch (characterData.status) {
       case 'uploaded':
-        return <div className={`${baseClasses} status-uploaded`}>📁</div>;
+        return (
+          <div className={`${baseClasses} status-uploaded`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14,2 14,8 20,8" />
+            </svg>
+          </div>
+        );
       case 'processing':
-        return <div className={`${baseClasses} status-processing`}>⏳</div>;
+        return (
+          <div className={`${baseClasses} status-processing`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12,6 12,12 16,14" />
+            </svg>
+          </div>
+        );
       case 'vectorized':
       case 'complete':
-        return <div className={`${baseClasses} status-complete`}>✅</div>;
+        return (
+          <div className={`${baseClasses} status-complete`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="20,6 9,17 4,12" />
+            </svg>
+          </div>
+        );
       case 'error':
-        return <div className={`${baseClasses} status-error`}>❌</div>;
+        return (
+          <div className={`${baseClasses} status-error`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </div>
+        );
       default:
         return null;
     }
@@ -125,7 +156,23 @@ export const CharacterTile: React.FC<CharacterTileProps> = ({
       {getStatusIndicator()}
 
       {/* Character display or thumbnail */}
-      {characterData?.originalImage ? (
+      {characterData?.vectorData ? (
+        <svg
+          viewBox={svgViewBox}
+          className="vectorized-character-svg"
+          style={{
+            width: '100%',
+            height: '100%'
+          }}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <path
+            d={characterData.vectorData}
+            fill="var(--gray-700)"
+            stroke="none"
+          />
+        </svg>
+      ) : characterData?.originalImage ? (
         <img
           src={characterData.originalImage.dataUrl}
           alt={`Upload for ${character.char}`}
@@ -141,9 +188,13 @@ export const CharacterTile: React.FC<CharacterTileProps> = ({
       <div className="tile-overlay">
         <button
           onClick={handleUploadClick}
-          className="tile-button"
+          className="btn btn-secondary tile-upload-btn"
+          title={characterData?.originalImage ? 'Replace image' : 'Upload image'}
         >
-          {characterData?.originalImage ? 'Replace' : 'Upload'}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 19V5" />
+            <path d="M5 12l7-7 7 7" />
+          </svg>
         </button>
       </div>
 

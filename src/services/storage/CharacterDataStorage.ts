@@ -60,14 +60,14 @@ export class CharacterDataStorage {
   // Character operations
   async storeCharacterData(data: CharacterData): Promise<void> {
     await this.ensureInitialized();
-    
+
     console.log(`💾 Storing character data for ${data.character} (${data.unicode})`);
-    
+
     // Store character metadata
     await indexedDBManager.storeCharacter({
       unicode: data.unicode,
       character: data.character,
-      svgPath: data.vectorizedGlyph?.svgPath,
+      svgPath: data.vectorizedGlyph?.svgPath || data.vectorData,
       editablePathData: data.vectorizedGlyph?.editablePathData,
       status: data.status,
       lastModified: new Date(),
@@ -88,14 +88,14 @@ export class CharacterDataStorage {
 
   async getCharacterData(unicode: string): Promise<CharacterData | null> {
     await this.ensureInitialized();
-    
+
     const characterRecord = await indexedDBManager.getCharacter(unicode);
     if (!characterRecord) {
       return null;
     }
 
     const imageRecord = await indexedDBManager.getImage(unicode);
-    
+
     const characterData: CharacterData = {
       unicode: characterRecord.unicode,
       character: characterRecord.character,
@@ -124,6 +124,11 @@ export class CharacterDataStorage {
           vectorizationTime: 0
         }
       };
+      // Also set vectorData for backward compatibility with CharacterTile component
+      characterData.vectorData = characterRecord.svgPath;
+    } else if (characterRecord.svgPath) {
+      // If we only have svgPath but no editablePathData, still set vectorData
+      characterData.vectorData = characterRecord.svgPath;
     }
 
     return characterData;
@@ -131,7 +136,7 @@ export class CharacterDataStorage {
 
   async getAllCharacterData(): Promise<CharacterData[]> {
     await this.ensureInitialized();
-    
+
     const characters = await indexedDBManager.getAllCharacters();
     const characterDataArray: CharacterData[] = [];
 
@@ -147,7 +152,7 @@ export class CharacterDataStorage {
 
   async getCharactersByStatus(status: CharacterData['status']): Promise<CharacterData[]> {
     await this.ensureInitialized();
-    
+
     const characters = await indexedDBManager.getCharactersByStatus(status);
     const characterDataArray: CharacterData[] = [];
 
@@ -163,9 +168,9 @@ export class CharacterDataStorage {
 
   async deleteCharacterData(unicode: string): Promise<void> {
     await this.ensureInitialized();
-    
+
     console.log(`🗑️ Deleting character data for ${unicode}`);
-    
+
     // Delete character record and image
     await Promise.all([
       indexedDBManager.deleteCharacter(unicode),
@@ -177,7 +182,7 @@ export class CharacterDataStorage {
 
   async updateCharacterStatus(unicode: string, status: CharacterData['status']): Promise<void> {
     await this.ensureInitialized();
-    
+
     const existing = await indexedDBManager.getCharacter(unicode);
     if (existing) {
       await indexedDBManager.storeCharacter({
@@ -191,9 +196,9 @@ export class CharacterDataStorage {
   // Project operations
   async storeProject(project: FontProject): Promise<void> {
     await this.ensureInitialized();
-    
+
     console.log(`💾 Storing project: ${project.name}`);
-    
+
     await indexedDBManager.storeProject({
       id: project.id,
       name: project.name,
@@ -212,7 +217,7 @@ export class CharacterDataStorage {
 
   async getProject(id: string): Promise<FontProject | null> {
     await this.ensureInitialized();
-    
+
     const projectRecord = await indexedDBManager.getProject(id);
     if (!projectRecord) {
       return null;
@@ -221,7 +226,7 @@ export class CharacterDataStorage {
     // Get all character data for this project
     const allCharacters = await this.getAllCharacterData();
     const projectCharacters = new Map<string, CharacterData>();
-    
+
     for (const char of allCharacters) {
       projectCharacters.set(char.unicode, char);
     }
@@ -239,7 +244,7 @@ export class CharacterDataStorage {
 
   async getAllProjects(): Promise<FontProject[]> {
     await this.ensureInitialized();
-    
+
     const projectRecords = await indexedDBManager.getAllProjects();
     const projects: FontProject[] = [];
 
@@ -255,9 +260,9 @@ export class CharacterDataStorage {
 
   async deleteProject(id: string): Promise<void> {
     await this.ensureInitialized();
-    
+
     console.log(`🗑️ Deleting project: ${id}`);
-    
+
     // Get project to find associated characters
     const project = await this.getProject(id);
     if (project) {
@@ -280,10 +285,10 @@ export class CharacterDataStorage {
     charactersByStatus: Record<string, number>;
   }> {
     await this.ensureInitialized();
-    
+
     const stats = await indexedDBManager.getStorageStats();
     const allCharacters = await indexedDBManager.getAllCharacters();
-    
+
     const charactersByStatus: Record<string, number> = {};
     for (const char of allCharacters) {
       charactersByStatus[char.status] = (charactersByStatus[char.status] || 0) + 1;
